@@ -42,6 +42,19 @@ after the final logout unless the administrator has enabled user lingering.
 
 ## Public ingress and frontend
 
+The current development configuration uses a Cloudflare Quick Tunnel. It is
+temporary: the hostname changes when its connector process restarts, and
+Cloudflare provides no uptime guarantee. For release, replace it with a
+named tunnel and a domain in your own Cloudflare account, or an administrator's
+HTTPS reverse proxy. See [Quick Tunnel limitations](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/do-more-with-tunnels/trycloudflare/).
+Traffic through this endpoint is forwarded by Cloudflare. The bearer token
+remains mandatory; knowing the URL alone does not grant access to jobs.
+
+The development API uses `--max-upload-mib 90` to leave room below the proxy's
+upload ceiling. The console reads the actual limit from `/api/health`.
+For a fixed ingress, replace `apiBase` and `deploymentMode` in `config.js` and
+add its origin with `--origin` if also serving the console from that hostname.
+
 Ask the server administrator to provide an HTTPS reverse proxy to
 `127.0.0.1:8766`, preserving `/api/*`, `Authorization`, `Origin` and upload
 bodies. Set an upload limit of 128 MiB, a request timeout of at least 180 seconds,

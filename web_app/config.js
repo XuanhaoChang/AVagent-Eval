@@ -1,3 +1,6 @@
 // Public configuration only. Never put a model API key or access token here.
-// Set apiBase to an administrator-approved HTTPS backend URL when available.
-window.AVAGENT_CONFIG = Object.freeze({ apiBase: "" });
+// Development tunnel: this hostname changes if its process is restarted.
+window.AVAGENT_CONFIG = Object.freeze({
+  apiBase: "https://pump-route-treat-soup.trycloudflare.com",
+  deploymentMode: "temporary"
+});

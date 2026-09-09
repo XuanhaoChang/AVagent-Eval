@@ -28,6 +28,7 @@
         <button type="submit" id="connect">连接服务器</button>
       </form>
       <p class="hint">请仅连接你信任的服务器。上传媒体将保存在该服务器，并可能发送给其配置的模型服务；持有同一访问令牌的协作者可查看任务报告。</p>
+      <p id="ingress-note" class="hint" hidden></p>
     </details>
     <p id="notice" class="notice" role="status" aria-live="polite" hidden></p>
     <div class="workspace">
@@ -38,7 +39,7 @@
             <label class="field">文本描述 <span class="required">必填</span><textarea id="prompt" name="prompt" rows="6" maxlength="10000" required placeholder="描述预期的人物、动作、台词及约束。例如：参考图中的人物面对镜头说出指定台词，保持服装一致，不添加字幕。"></textarea><small>填写生成时的原始 prompt，有助于检查指令遵循。</small></label>
             <label class="field">参考图 <span class="optional">可选 · 最多 4 张</span><input id="references" name="references" type="file" accept="image/png,image/jpeg,image/webp" multiple><small>PNG / JPG / WebP，每张不超过 10 MiB。</small></label>
             <div id="reference-previews" class="reference-previews" aria-label="已选参考图"></div>
-            <label class="field">生成视频 <span class="required">必填</span><input id="video-input" name="video" type="file" accept="video/mp4,video/quicktime,video/webm" required><small>MP4 / MOV / WebM，最长 60 秒，总上传小于 128 MiB。</small></label>
+            <label class="field">生成视频 <span class="required">必填</span><input id="video-input" name="video" type="file" accept="video/mp4,video/quicktime,video/webm" required><small>MP4 / MOV / WebM，最长 60 秒，总上传小于 <span id="upload-limit">128</span> MiB。</small></label>
             <figure id="video-figure" hidden><video id="video-preview" controls preload="metadata" playsinline></video><figcaption id="video-caption"></figcaption></figure>
             <div class="submit-row"><button id="run" class="primary" type="submit" disabled>开始评测 <span aria-hidden="true">→</span></button><span id="submit-hint">请先连接后端</span></div>
           </fieldset>

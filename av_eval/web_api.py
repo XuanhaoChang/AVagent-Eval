@@ -51,7 +51,8 @@ def create_app(settings: Settings):
                 if length < 0:
                     return JSONResponse({"detail": "Content-Length required."}, status_code=411)
                 if length > settings.max_upload_bytes:
-                    return JSONResponse({"detail": "上传总大小不能超过 128 MiB。"}, status_code=413)
+                    maximum = settings.max_upload_bytes // (1024 * 1024)
+                    return JSONResponse({"detail": f"上传总大小不能超过 {maximum} MiB。"}, status_code=413)
         response = await call_next(request)
         response.headers["Cache-Control"] = "no-store"
         response.headers["X-Content-Type-Options"] = "nosniff"

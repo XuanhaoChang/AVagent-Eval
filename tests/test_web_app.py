@@ -48,9 +48,13 @@ class WebAppTests(unittest.TestCase):
         self.assertNotIn("sessionStorage", self.script)
         self.assertNotIn("innerHTML", self.script)
 
-    def test_personal_repository_and_truthful_unconfigured_default(self):
+    def test_personal_repository_and_explicit_public_configuration(self):
         self.assertIn("https://github.com/XuanhaoChang/AVagent-Eval", self.page)
-        self.assertIn('apiBase: ""', (ROOT / "web_app/config.js").read_text())
+        config = (ROOT / "web_app/config.js").read_text()
+        base = re.search(r'apiBase:\s*"([^"]*)"', config).group(1)
+        self.assertTrue(not base or base.startswith("https://"))
+        if ".trycloudflare.com" in base:
+            self.assertIn('deploymentMode: "temporary"', config)
         self.assertNotIn("DEMO RUN", self.page)
         self.assertIn("非准确率", self.script)
 

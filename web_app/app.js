@@ -3,7 +3,8 @@
 
 const $ = (id) => document.getElementById(id);
 const state = { base: "", token: "", connected: false, ready: false, job: null,
-  poll: null, generation: 0, previewJobId: null, videoURL: null, referenceURLs: [], submitting: false };
+  poll: null, generation: 0, previewJobId: null, videoURL: null, referenceURLs: [], submitting: false,
+  maxUploadBytes: 128 * 1048576 };
 const jobLabels = { queued: "队列等待中", running: "avagent 正在评测", completed: "评测完成", failed: "评测失败", cancelled: "已停止" };
 const checkLabels = {
   reference_subject_identity: "参考主体一致性", entity_count_spatial_composition: "实体数量与空间构图",
@@ -93,6 +94,10 @@ $("connection-form").addEventListener("submit", async (event) => {
     if (health.service !== "avagent-eval") throw new Error("该地址不是 avagent-eval 后端。");
     state.connected = true;
     state.ready = health.configured;
+    if (Number.isFinite(health.limits?.max_upload_bytes) && health.limits.max_upload_bytes > 0) {
+      state.maxUploadBytes = health.limits.max_upload_bytes;
+      $("upload-limit").textContent = Math.floor(state.maxUploadBytes / 1048576);
+    }
     status("connection-status", state.ready ? "后端已连接" : "后端待配置", state.ready ? "good" : "busy");
     $("connection-summary").textContent = state.ready ? new URL(state.base).host : "已连接，评测配置未完成";
     $("connection-panel").open = !state.ready;
@@ -138,8 +143,8 @@ $("evaluation-form").addEventListener("submit", async (event) => {
   const video = $("video-input").files[0];
   const refs = Array.from($("references").files);
   if (!video) { notify("请选择生成视频。"); return; }
-  if (video.size + refs.reduce((sum, file) => sum + file.size, 0) >= 128 * 1048576) {
-    notify("上传总大小须小于 128 MiB。"); return;
+  if (video.size + refs.reduce((sum, file) => sum + file.size, 0) >= state.maxUploadBytes) {
+    notify(`上传总大小须小于 ${Math.floor(state.maxUploadBytes / 1048576)} MiB。`); return;
   }
   if (refs.some((file) => file.size > 10 * 1048576)) { notify("参考图每张不能超过 10 MiB。"); return; }
   if ($("prompt").value.trim().length === 0) { notify("请填写原始生成 prompt。"); return; }
@@ -283,4 +288,8 @@ $("download").addEventListener("click", async () => {
   } catch (error) { notify(error.message); }
 });
 if (!$("api-base").value) $("connection-summary").textContent = "尚未配置公网后端地址";
+if (window.AVAGENT_CONFIG?.deploymentMode === "temporary") {
+  $("ingress-note").hidden = false;
+  $("ingress-note").textContent = "当前通过 Cloudflare 临时 HTTPS 隧道连接服务器，仅供联调。隧道重启后地址可能变化，正式部署需固定域名入口。";
+}
 setControls();
