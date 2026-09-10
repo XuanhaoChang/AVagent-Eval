@@ -55,6 +55,8 @@ class WebAppTests(unittest.TestCase):
         self.assertTrue(not base or base.startswith("https://"))
         if ".trycloudflare.com" in base:
             self.assertIn('deploymentMode: "temporary"', config)
+        if ".ngrok-free." in base:
+            self.assertIn('deploymentMode: "fixed"', config)
         self.assertNotIn("DEMO RUN", self.page)
         self.assertIn("非准确率", self.script)
 
@@ -68,6 +70,12 @@ class WebAppTests(unittest.TestCase):
         self.assertNotIn("fetch(", events)
         self.assertNotIn("?token", events)
         self.assertIn("this.retries >= delays.length", events)
+
+    def test_ngrok_api_requests_skip_html_interstitial_without_dropping_auth(self):
+        self.assertIn('"ngrok-skip-browser-warning": "1"', self.script)
+        self.assertIn('...(ngrok ?', self.script)
+        self.assertIn('Authorization: `Bearer ${snapshot.token}`', self.script)
+        self.assertIn('credentials: "omit"', self.script)
 
 
 if __name__ == "__main__":

@@ -58,9 +58,12 @@ async function api(path, options = {}, snapshot = state) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), options.body ? 180000 : 20000);
   try {
+    // Free ngrok browser requests otherwise receive HTML instead of API JSON.
+    const ngrok = /\.(?:ngrok-free|ngrok)\.(?:app|dev)$/.test(new URL(snapshot.base).hostname);
     const response = await fetch(snapshot.base + path, { ...options, signal: controller.signal,
       cache: "no-store", credentials: "omit", redirect: "error",
-      headers: { Authorization: `Bearer ${snapshot.token}`, ...(options.headers || {}) } });
+      headers: { Authorization: `Bearer ${snapshot.token}`,
+        ...(ngrok ? { "ngrok-skip-browser-warning": "1" } : {}), ...(options.headers || {}) } });
     if (!response.ok) {
       let detail;
       try { detail = (await response.json()).detail; } catch { /* A proxy may return HTML. */ }

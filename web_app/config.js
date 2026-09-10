@@ -1,6 +1,6 @@
 // Public configuration only. Never put a model API key or access token here.
-// Development tunnel: this hostname changes if its process is restarted.
+// Account-assigned fixed domain. The server and ngrok service must remain online.
 window.AVAGENT_CONFIG = Object.freeze({
-  apiBase: "https://pump-route-treat-soup.trycloudflare.com",
-  deploymentMode: "temporary"
+  apiBase: "https://shifting-favored-unmade.ngrok-free.dev",
+  deploymentMode: "fixed"
 });

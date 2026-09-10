@@ -120,7 +120,12 @@ the evaluator. Browser/OS notifications after closing the page are not included.
 ### Fixed free ngrok ingress
 
 Register a Free ngrok account and find its assigned development domain and
-authtoken in the ngrok dashboard. No new domain purchase is required. On this
+authtoken in the ngrok dashboard: [Domains](https://dashboard.ngrok.com/domains)
+and [Your Authtoken](https://dashboard.ngrok.com/get-started/your-authtoken).
+No new domain purchase is required. `127.0.0.1:8766` is the server-internal
+upstream, not the URL to open on a different computer. Visitors open GitHub
+Pages; the console sends API requests through the assigned ngrok HTTPS domain.
+On this
 server run:
 
 ```bash
@@ -148,6 +153,28 @@ Do not stop a working ingress until the replacement's authenticated HTTPS and
 WSS paths have both been verified. Then set `web_app/config.js` to the verified
 public URL with `deploymentMode: "fixed"` and deploy GitHub Pages. If serving
 the console directly from that URL, add its HTTPS origin to the API allowlist.
+
+The browser adds `ngrok-skip-browser-warning: 1` only for supported ngrok
+hostnames; the API allows this header in CORS preflights. Without it, the Free
+plan can return its HTML interstitial rather than JSON, breaking cross-origin
+browser requests even when command-line health checks pass. This header does
+not replace or bypass the application's access token or Origin checks. A direct
+browser visit to the ngrok-hosted HTML may still show the provider's Visit Site
+page; the GitHub Pages frontend does not require that manual step.
+See [ngrok's supported header](https://ngrok.com/docs/pricing-limits/free-plan-limits#using-headers).
+
+For the maintained server deployment, operate the services with:
+
+```bash
+systemctl --user status avagent-eval.service avagent-eval-ngrok.service
+systemctl --user restart avagent-eval-ngrok.service
+# Stop only public ingress (the API and any evaluation jobs keep running):
+systemctl --user stop avagent-eval-ngrok.service
+```
+
+The domain stays the same across agent restarts. Check `loginctl show-user
+changxuanhao -p Linger` and service enablement before relying on logout/boot
+persistence. This is not a guarantee of uptime during host or network outages.
 
 ngrok supports WebSockets on the same HTTP endpoint. Connection setup and
 reconnects still use requests/connections, and frames still consume traffic;

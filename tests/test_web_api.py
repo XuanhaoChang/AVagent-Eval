@@ -106,6 +106,21 @@ class WebAPITests(unittest.TestCase):
             "Access-Control-Request-Method": "POST", "Access-Control-Request-Headers": "authorization,content-type"})
         self.assertEqual(preflight.status_code, 200)
 
+    def test_ngrok_browser_header_preserves_authentication_and_origin_checks(self):
+        header = {"ngrok-skip-browser-warning": "1"}
+        preflight = self.client.options("/api/health", headers={"Origin": ORIGIN,
+            "Access-Control-Request-Method": "GET",
+            "Access-Control-Request-Headers": "authorization,ngrok-skip-browser-warning"})
+        self.assertEqual(preflight.status_code, 200)
+        self.assertIn("ngrok-skip-browser-warning", preflight.headers["access-control-allow-headers"])
+        self.assertEqual(self.client.get("/api/health", headers=header).status_code, 401)
+        allowed = self.client.get("/api/health", headers={**self.headers, **header})
+        self.assertEqual(allowed.status_code, 200)
+        self.assertEqual(allowed.json()["service"], "avagent-eval")
+        denied = self.client.get("/api/health", headers={**self.headers, **header,
+            "Origin": "https://untrusted.example"})
+        self.assertEqual(denied.status_code, 403)
+
     def test_successful_upload_cli_job_and_export(self):
         response = self.submit()
         self.assertEqual(response.status_code, 202, response.text)

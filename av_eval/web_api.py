@@ -64,7 +64,8 @@ def create_app(settings: Settings):
     # CORS must wrap auth errors too, so add it after the authentication middleware.
     app.add_middleware(CORSMiddleware, allow_origins=list(settings.origins),
                        allow_methods=["GET", "POST", "OPTIONS"],
-                       allow_headers=["Authorization", "Content-Type"], max_age=600)
+                       allow_headers=["Authorization", "Content-Type", "ngrok-skip-browser-warning"],
+                       max_age=600)
 
     @app.get("/api/health")
     def health(request: Request):

@@ -71,14 +71,17 @@ def main(argv=None) -> int:
         print("请在交互式服务器终端运行；不要通过命令参数或管道传递密钥。", file=sys.stderr)
         return 2
     try:
-        print("将配置并允许助手公开 avagent-eval 网站：127.0.0.1:8766。")
+        print("将为 avagent-eval 配置 ngrok 公网 HTTPS 入口。")
+        print("127.0.0.1:8766 是服务器内部转发目标，不是你在自己电脑上打开的网址。")
         print("仅公开这个网站，保留其已有访问令牌；不添加 ngrok 登录或限流策略。")
         if input("确认此服务可以公开？输入 yes 继续: ").strip().lower() != "yes":
             print("已取消，未写入配置或启动隧道。")
             return 1
+        print("免费域名查看：https://dashboard.ngrok.com/domains")
         domain = input("ngrok 控制台分配的域名: ")
         # Validate non-secret input before asking for the credential.
         endpoint_url(domain)
+        print("令牌查看：https://dashboard.ngrok.com/get-started/your-authtoken（不是 GitHub Token）")
         with warnings.catch_warnings():
             warnings.simplefilter("error", getpass.GetPassWarning)
             token = getpass.getpass("ngrok authtoken（不回显）: ")
