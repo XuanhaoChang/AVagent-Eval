@@ -173,6 +173,112 @@ class WebAPITests(unittest.TestCase):
         finally:
             manager.close()
 
+    def connect_events(self, job_id):
+        return self.client.websocket_connect(f"/api/jobs/{job_id}/events", headers={"Origin": ORIGIN})
+
+    def test_websocket_rejects_origin_and_query_credentials(self):
+        from starlette.websockets import WebSocketDisconnect
+        for origin in (None, "https://untrusted.example", "null"):
+            with self.assertRaises(WebSocketDisconnect):
+                with self.client.websocket_connect("/api/jobs/unknown/events", headers={"Origin": origin} if origin else {}):
+                    self.fail("Untrusted origin accepted")
+        with self.assertRaises(WebSocketDisconnect):
+            with self.client.websocket_connect("/api/jobs/unknown/events?token=never-in-url", headers={"Origin": ORIGIN}):
+                self.fail("Query-string credential accepted")
+
+    def test_websocket_checks_auth_before_job_lookup(self):
+        from starlette.websockets import WebSocketDisconnect
+        with self.connect_events("unknown") as connection:
+            connection.send_json({"type": "authenticate", "token": "incorrect"})
+            with self.assertRaises(WebSocketDisconnect) as error:
+                connection.receive_json()
+            self.assertEqual(error.exception.code, 4401)
+        with self.connect_events("unknown") as connection:
+            connection.send_json({"type": "authenticate", "token": TOKEN})
+            with self.assertRaises(WebSocketDisconnect) as error:
+                connection.receive_json()
+            self.assertEqual(error.exception.code, 4404)
+
+    def test_websocket_rejects_malformed_and_binary_auth_frames(self):
+        from starlette.websockets import WebSocketDisconnect
+        for payload in ('not json', '[]', '{"type":"authenticate","token":123}', b'binary'):
+            with self.connect_events("unknown") as connection:
+                if isinstance(payload, bytes):
+                    connection.send_bytes(payload)
+                else:
+                    connection.send_text(payload)
+                with self.assertRaises(WebSocketDisconnect) as error:
+                    connection.receive_json()
+                self.assertIn(error.exception.code, (4400, 4401))
+
+    def test_websocket_authentication_timeout_and_capacity(self):
+        from fastapi.testclient import TestClient
+        from starlette.websockets import WebSocketDisconnect
+        from av_eval.web_api import create_app
+        settings = replace(self.settings, event_auth_timeout_sec=.05, max_event_connections=1)
+        with TestClient(create_app(settings)) as client:
+            with client.websocket_connect("/api/jobs/unknown/events", headers={"Origin": ORIGIN}) as connection:
+                with self.assertRaises(WebSocketDisconnect):
+                    with client.websocket_connect("/api/jobs/unknown/events", headers={"Origin": ORIGIN}):
+                        self.fail("Exceeded connection limit")
+                with self.assertRaises(WebSocketDisconnect) as error:
+                    connection.receive_json()
+                self.assertEqual(error.exception.code, 4408)
+        self.assertEqual(client.app.state.event_connections, 0)
+
+    def test_websocket_pushes_completion_without_status_queries(self):
+        job_id = self.submit("[DELAY]").json()["id"]
+        with self.connect_events(job_id) as connection:
+            connection.send_json({"type": "authenticate", "token": TOKEN})
+            while True:
+                message = connection.receive_json()
+                self.assertEqual(message["type"], "job")
+                self.assertEqual(set(message["job"]), {"id", "status", "started_at", "finished_at"})
+                if message["job"]["status"] == "completed":
+                    break
+            self.assertNotIn(TOKEN, json.dumps(message))
+        self.assertEqual(self.client.get(f"/api/jobs/{job_id}", headers=self.headers).json()["status"], "completed")
+
+    def test_websocket_reconnect_snapshots_missed_failure(self):
+        job_id = self.submit("[FAIL]").json()["id"]
+        self.wait_for(job_id, {"failed"})
+        with self.connect_events(job_id) as connection:
+            connection.send_json({"type": "authenticate", "token": TOKEN})
+            self.assertEqual(connection.receive_json()["job"]["status"], "failed")
+
+    def test_websocket_cancel_and_disconnect_do_not_cancel_other_jobs(self):
+        job_id = self.submit("[WAIT]").json()["id"]
+        self.wait_for(job_id, {"running"})
+        manager = self.client.app.state.jobs
+        with self.connect_events(job_id) as connection:
+            connection.send_json({"type": "authenticate", "token": TOKEN})
+            self.assertEqual(connection.receive_json()["job"]["status"], "running")
+        self.assertEqual(manager.get(job_id)["status"], "running")
+        self.assertFalse(manager.listeners)
+        with self.connect_events(job_id) as connection:
+            connection.send_json({"type": "authenticate", "token": TOKEN})
+            connection.receive_json()
+            self.client.post(f"/api/jobs/{job_id}/cancel", headers=self.headers)
+            self.assertEqual(connection.receive_json()["job"]["status"], "cancelled")
+
+    def test_websocket_heartbeat_on_same_connection_and_invalid_frames(self):
+        from fastapi.testclient import TestClient
+        from starlette.websockets import WebSocketDisconnect
+        from av_eval.web_api import create_app
+        with TestClient(create_app(replace(self.settings, event_heartbeat_sec=.05))) as client:
+            job_id = client.post("/api/jobs", headers=self.headers, data={"prompt": "[WAIT]"},
+                                 files={"video": ("video.mp4", self.video, "video/mp4")}).json()["id"]
+            with client.websocket_connect(f"/api/jobs/{job_id}/events", headers={"Origin": ORIGIN}) as connection:
+                connection.send_json({"type": "authenticate", "token": TOKEN})
+                while connection.receive_json()["type"] != "heartbeat":
+                    pass
+                connection.send_json({"type": "pong"})
+                self.assertEqual(connection.receive_json()["type"], "heartbeat")
+                connection.send_json({"type": "arbitrary-command"})
+                with self.assertRaises(WebSocketDisconnect) as error:
+                    connection.receive_json()
+                self.assertEqual(error.exception.code, 4400)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -18,6 +18,8 @@ if "[FAIL]" in row["user_prompt"]:
     sys.exit(1)
 if "[WAIT]" in row["user_prompt"]:
     time.sleep(60)
+if "[DELAY]" in row["user_prompt"]:
+    time.sleep(2)
 with args.output_csv.open("w", encoding="utf-8", newline="") as stream:
     writer = csv.DictWriter(stream, fieldnames=[*row, "GPT预测结果"])
     writer.writeheader()

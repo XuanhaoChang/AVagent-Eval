@@ -43,7 +43,8 @@ def main() -> int:
     if missing:
         print("Evaluation disabled until configured: " + ", ".join(missing), flush=True)
     import uvicorn
-    uvicorn.run(create_app(settings), host=args.host, port=args.port, workers=1, access_log=False)
+    uvicorn.run(create_app(settings), host=args.host, port=args.port, workers=1, access_log=False,
+                ws="websockets", ws_max_size=4096, ws_max_queue=4, ws_per_message_deflate=False)
     return 0
 
 

@@ -18,6 +18,16 @@ class ConfigureGitHubAccessTests(unittest.TestCase):
     def test_personal_repository_is_default(self):
         self.assertEqual(setup.DEFAULT_REPOSITORY, "XuanhaoChang/AVagent-Eval")
 
+    def test_cache_lifetime_is_thirty_days(self):
+        self.assertEqual(setup.CACHE_DAYS, 30)
+        self.assertEqual(setup.CACHE_TIMEOUT_SECONDS, 2592000)
+        for action in ("approve", "fill", "reject"):
+            with self.subTest(action=action):
+                command = setup.credential_command(action)
+                self.assertIn("credential.helper=cache --timeout=2592000", command)
+                self.assertIn("credential.helper=", command)
+                self.assertEqual(command[-1], action)
+
     def test_paste_line_endings_are_removed(self):
         result = setup.credential_input(setup.DEFAULT_REPOSITORY, "XuanhaoChang", "test-only-token\r\n")
         self.assertNotIn("\r", result)
@@ -44,7 +54,7 @@ class ConfigureGitHubAccessTests(unittest.TestCase):
         self.assertFalse(any(key.startswith("GIT_TRACE") for key in kwargs["env"]))
         self.assertNotIn("GIT_CURL_VERBOSE", kwargs["env"])
         self.assertIn("credential.useHttpPath=true", args[0])
-        self.assertIn("credential.helper=cache --timeout=3600", args[0])
+        self.assertIn("credential.helper=cache --timeout=2592000", args[0])
 
     @patch.object(setup.subprocess, "run")
     def test_helper_error_cannot_echo_token(self, run):

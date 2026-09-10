@@ -20,10 +20,13 @@ import warnings
 
 
 DEFAULT_REPOSITORY = "XuanhaoChang/AVagent-Eval"
+CACHE_DAYS = 30
+CACHE_TIMEOUT_SECONDS = CACHE_DAYS * 24 * 60 * 60
 
 
 def credential_command(action: str) -> list[str]:
-    return ["git", "-c", "credential.helper=", "-c", "credential.helper=cache --timeout=3600",
+    return ["git", "-c", "credential.helper=", "-c",
+            f"credential.helper=cache --timeout={CACHE_TIMEOUT_SECONDS}",
             "-c", "credential.useHttpPath=true", "credential", action]
 
 
@@ -73,7 +76,8 @@ def main() -> int:
         print("请在服务器的交互式终端直接运行，不要用管道传入 token。", file=sys.stderr)
         return 1
     print(f"目标仓库：{args.repository}")
-    print("请输入新 token；输入不显示，凭据只在内存中缓存一小时。")
+    print(f"请输入现有且仍有效的 token；输入不显示，凭据只在内存中缓存 {CACHE_DAYS} 天。")
+    print("这不会延长 GitHub 上 token 本身的有效期；服务器重启或缓存进程退出会清空缓存。")
     try:
         with warnings.catch_warnings():
             warnings.simplefilter("error", getpass.GetPassWarning)
@@ -87,7 +91,7 @@ def main() -> int:
         cache_credential(args.repository, account["login"], token)
         del token
         print(f"已验证登录账号：{account['login']}")
-        print("凭据已缓存。账号权限不等于 token 写入权限；接下来需要推送预检。")
+        print(f"凭据已按 {CACHE_DAYS} 天缓存。账号权限不等于 token 写入权限；接下来需要推送预检。")
         print("告诉我“已配置个人仓库”，我会进行不修改远端的推送预检。")
         return 0
     except urllib.error.HTTPError as error:

@@ -3,7 +3,7 @@
 
 const $ = (id) => document.getElementById(id);
 const state = { base: "", token: "", connected: false, ready: false, job: null,
-  poll: null, generation: 0, previewJobId: null, videoURL: null, referenceURLs: [], submitting: false,
+  events: null, generation: 0, previewJobId: null, videoURL: null, referenceURLs: [], submitting: false,
   maxUploadBytes: 128 * 1048576 };
 const jobLabels = { queued: "队列等待中", running: "avagent 正在评测", completed: "评测完成", failed: "评测失败", cancelled: "已停止" };
 const checkLabels = {
@@ -41,6 +41,7 @@ function setControls() {
   $("run").disabled = !state.connected || !state.ready || state.submitting;
   $("input-fields").disabled = state.submitting;
   $("refresh-history").disabled = !state.connected;
+  $("refresh-job").disabled = !state.connected || !state.job;
   $("submit-hint").textContent = state.submitting ? "正在上传并创建任务…" :
     state.ready ? "由服务器运行 avagent" : state.connected ? "后端配置尚未完成" : "请先连接后端";
 }
@@ -75,7 +76,7 @@ async function api(path, options = {}, snapshot = state) {
 
 $("connection-form").addEventListener("submit", async (event) => {
   event.preventDefault();
-  clearTimeout(state.poll);
+  stopEvents();
   const generation = ++state.generation;
   state.connected = false;
   state.ready = false;
@@ -159,13 +160,14 @@ $("evaluation-form").addEventListener("submit", async (event) => {
     state.previewJobId = job.id;
     state.job = job;
     renderJob(job);
-    beginPolling(job.id);
+    beginEvents(job.id);
     await refreshHistory();
   } catch (error) { notify(error.message); }
   finally { state.submitting = false; $("connect").disabled = false; setControls(); }
 });
 
 function renderJob(job) {
+  $("refresh-job").disabled = !state.connected || !job;
   const report = job?.report;
   $("report").hidden = !report;
   $("empty-results").hidden = !!report;
@@ -221,30 +223,55 @@ function renderJob(job) {
   $("model-info").textContent = JSON.stringify(report.models, null, 2);
 }
 
-function beginPolling(jobId) {
-  clearTimeout(state.poll);
+function stopEvents() {
+  state.events?.close();
+  state.events = null;
+  $("event-status").textContent = "任务结束后自动通知，无需定时查询。";
+}
+
+function beginEvents(jobId) {
+  stopEvents();
   const generation = ++state.generation;
   const snapshot = { base: state.base, token: state.token };
-  async function poll() {
-    if (generation !== state.generation) return;
-    try {
-      const job = await (await api(`/api/jobs/${encodeURIComponent(jobId)}`, {}, snapshot)).json();
+  const labels = {
+    connecting: "正在连接结果通知…", connected: "已订阅任务状态；完成后自动显示报告。",
+    reconnecting: "通知连接中断，正在重连；服务器任务不受影响。",
+    disconnected: "自动重连已暂停以节省额度；可点击“获取最新状态”。",
+    denied: "通知连接未获授权，请检查访问令牌或重新连接服务器。",
+    missing: "任务不存在，请刷新运行记录。"
+  };
+  state.events = new window.AvagentJobEvents({ ...snapshot, jobId,
+    onStatus: (kind) => {
+      if (generation === state.generation) $("event-status").textContent = labels[kind];
+    },
+    onJob: async (event) => {
       if (generation !== state.generation) return;
-      state.job = job;
-      renderJob(job);
-      if (terminal.has(job.status)) { await refreshHistory(); return; }
-    } catch (error) {
-      if (generation !== state.generation) return;
-      notify(`${error.message}\n状态查询暂时中断，稍后自动重试。`);
+      if (!terminal.has(event.status)) {
+        state.job = { ...state.job, ...event };
+        renderJob(state.job);
+        return;
+      }
+      $("event-status").textContent = "任务已结束，正在获取报告…";
+      try {
+        const job = await (await api(`/api/jobs/${encodeURIComponent(jobId)}`, {}, snapshot)).json();
+        if (generation !== state.generation) return;
+        state.job = job;
+        renderJob(job);
+        $("event-status").textContent = "已收到最终状态，通知连接已关闭。";
+        await refreshHistory();
+      } catch (error) {
+        if (generation === state.generation) {
+          $("event-status").textContent = "最终状态获取失败，可点击“获取最新状态”重试。";
+          notify(error.message);
+        }
+      }
     }
-    if (generation === state.generation) state.poll = setTimeout(poll, 4000);
-  }
-  state.poll = setTimeout(poll, 800);
+  });
 }
 async function refreshHistory() {
   const snapshot = { base: state.base, token: state.token };
   const jobs = await (await api("/api/jobs", {}, snapshot)).json();
-  if (snapshot.base !== state.base || snapshot.token !== state.token) return;
+  if (snapshot.base !== state.base || snapshot.token !== state.token || !state.connected) return;
   $("history-list").replaceChildren();
   if (!jobs.length) { $("history-list").append(node("p", "还没有任务。提交一次评测后，记录会显示在这里。", "empty-note")); return; }
   jobs.forEach((job) => {
@@ -255,12 +282,13 @@ async function refreshHistory() {
     select.type = "button";
     select.addEventListener("click", async () => {
       try {
-        clearTimeout(state.poll);
+        stopEvents();
         const generation = ++state.generation;
         const selected = await (await api(`/api/jobs/${encodeURIComponent(job.id)}`)).json();
         if (generation !== state.generation) return;
         state.job = selected; renderJob(selected);
-        if (!terminal.has(selected.status)) beginPolling(selected.id);
+        if (!terminal.has(selected.status)) beginEvents(selected.id);
+        else $("event-status").textContent = "已载入最终状态，无需订阅通知。";
         $("output-title").scrollIntoView({ block: "start" });
       } catch (error) { notify(error.message); }
     });
@@ -270,10 +298,41 @@ async function refreshHistory() {
   });
 }
 $("refresh-history").addEventListener("click", () => refreshHistory().catch((error) => notify(error.message)));
+$("refresh-job").addEventListener("click", async () => {
+  if (!state.connected || !state.job) return;
+  stopEvents();
+  const generation = ++state.generation;
+  const snapshot = { base: state.base, token: state.token };
+  const jobId = state.job.id;
+  $("refresh-job").disabled = true;
+  try {
+    const job = await (await api(`/api/jobs/${encodeURIComponent(jobId)}`, {}, snapshot)).json();
+    if (generation !== state.generation) return;
+    state.job = job; renderJob(job);
+    if (!terminal.has(job.status)) beginEvents(job.id);
+    else $("event-status").textContent = "已载入最终状态，无需订阅通知。";
+    notify();
+  } catch (error) {
+    if (generation === state.generation) notify(error.message);
+  } finally {
+    if (generation === state.generation) $("refresh-job").disabled = !state.connected || !state.job;
+  }
+});
+window.addEventListener("pagehide", () => { stopEvents(); ++state.generation; });
+window.addEventListener("pageshow", (event) => {
+  if (event.persisted && state.connected && state.job && !terminal.has(state.job.status)) beginEvents(state.job.id);
+});
 $("cancel").addEventListener("click", async () => {
   if (!state.job || !confirm("停止当前任务？已完成的其他任务不会受影响。")) return;
   $("cancel").disabled = true;
-  try { state.job = await (await api(`/api/jobs/${state.job.id}/cancel`, { method: "POST" })).json(); renderJob(state.job); }
+  try {
+    state.job = await (await api(`/api/jobs/${state.job.id}/cancel`, { method: "POST" })).json();
+    if (terminal.has(state.job.status)) {
+      stopEvents(); ++state.generation;
+      $("event-status").textContent = "任务已结束，无需订阅通知。";
+    }
+    renderJob(state.job);
+  }
   catch (error) { notify(error.message); }
   finally { $("cancel").disabled = false; }
 });

@@ -89,6 +89,74 @@ All `/api/*` requests require `Authorization: Bearer <website-access-token>`.
 | `POST /api/jobs/{id}/cancel` | Cancel queued/running task and stop its process group |
 | `GET /api/jobs/{id}/report.jsonl` | Sanitized structured report, not the raw run log |
 
+### Server-pushed task notifications
+
+The console no longer polls the job API. After submitting or selecting an
+unfinished job, it opens `WSS /api/jobs/{id}/events`. Browser WebSockets cannot
+set an Authorization header, so the client sends
+`{"type":"authenticate","token":"<website-access-token>"}` as its first frame.
+The token is never placed in the URL, subprotocol, or browser storage. HTTP
+middleware does not authenticate WebSockets: this endpoint independently
+checks the Origin allowlist, authenticates within five seconds, and only then
+looks up the job. Missing or untrusted Origins and query strings are rejected.
+
+After authentication, the server immediately sends the latest persisted job
+state, including a job that finished while disconnected. Worker state changes
+trigger events; there is no background HTTP poll or periodic job-state scan.
+Events contain only the job ID, status, and timestamps. The browser fetches the
+existing authenticated report endpoint once after a terminal event. Failed
+jobs remain failed, not a fabricated successful report.
+
+Heartbeats run every 25 seconds inside the same WebSocket. They are not new
+HTTP requests. Lost connections use up to five retries (2, 5, 15, 30, 60 seconds)
+per selected job subscription, then require the **获取最新状态** button.
+Refreshing that button fetches the latest job once and resubscribes if needed.
+At most 16 event connections, including pending authentication, are admitted;
+incoming frames are limited to 4 KiB by the supplied uvicorn launcher. Slow
+consumers receive the latest state through a one-item queue. Finished jobs and
+disconnected clients release subscriptions. Closing the page never cancels
+the evaluator. Browser/OS notifications after closing the page are not included.
+
+### Fixed free ngrok ingress
+
+Register a Free ngrok account and find its assigned development domain and
+authtoken in the ngrok dashboard. No new domain purchase is required. On this
+server run:
+
+```bash
+python scripts/configure_ngrok_access.py
+```
+
+Enter the assigned domain and the authtoken in the hidden prompt. This writes
+`.local/ngrok/ngrok.yml` with mode `0600` and a separate public `endpoint.txt`.
+It does not start a tunnel or claim remote authorization has succeeded. Never
+share the config or commit it. The configuration disables the local inspection
+UI and request-body inspection storage, and pins an explicit HTTPS domain;
+it will not fall back to a new random URL if that domain is unavailable.
+
+Run an installed official ngrok v3 binary with:
+
+```bash
+ngrok config check --config .local/ngrok/ngrok.yml
+ngrok start avagent-eval --config .local/ngrok/ngrok.yml
+```
+
+For unattended operation use a dedicated systemd service with restart backoff,
+`UMask=0077`, and the API service as a dependency. Enable the service at boot and
+ask the administrator to enable user lingering or provide a system service.
+Do not stop a working ingress until the replacement's authenticated HTTPS and
+WSS paths have both been verified. Then set `web_app/config.js` to the verified
+public URL with `deploymentMode: "fixed"` and deploy GitHub Pages. If serving
+the console directly from that URL, add its HTTPS origin to the API allowlist.
+
+ngrok supports WebSockets on the same HTTP endpoint. Connection setup and
+reconnects still use requests/connections, and frames still consume traffic;
+push notifications do not remove the Free plan's monthly traffic quota.
+The Free plan currently includes 20,000 HTTP requests and 1 GB data transfer
+per month (including traffic forwarded to the agent). Verify limits in the
+account dashboard before public release. See [ngrok WebSockets](https://ngrok.com/docs/using-ngrok-with/websockets)
+and [Free limits](https://ngrok.com/docs/pricing-limits/free-plan-limits).
+
 The console shows reported issue count, evaluable-check coverage and elapsed
 time. A missing check or failed tool remains `not_evaluable`; zero issues is not
 proof that the video has no defects. Confidence is not calibrated accuracy.
@@ -109,6 +177,26 @@ dedicated service account/sandbox before offering access to untrusted users.
 On service restart, unfinished jobs are marked failed and never billed again
 through an automatic retry.
 
+## GitHub publishing credentials
+
+Run `python scripts/configure_github_access.py` in the server terminal. Reuse
+the existing personal-repository token if it is still valid. The hidden prompt
+passes it to Git through stdin and caches it in memory for **30 days**
+(`2592000` seconds), never in source files or command-line arguments.
+
+This cache timeout does not extend the token's GitHub expiration date. A server
+restart or stopped credential-cache daemon also clears the cache early. If
+creating a new token, choose an expiration of at least 30 days on GitHub and
+restrict its repository access to the publishing repository.
+
+Publishing commands that explicitly select a credential helper must use
+`-c credential.helper= -c 'credential.helper=cache --timeout=2592000'`
+and `-c credential.useHttpPath=true`. Using bare `credential.helper=cache`
+can shorten the lifetime when Git saves a successfully used credential again.
+Do not store the token in `.gitconfig`, a remote URL, or a plaintext credential
+file. See [Git's credential cache documentation](https://git-scm.com/docs/git-credential-cache)
+and [GitHub's token guidance](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens).
+
 ## Verification
 
 ```bash
@@ -116,6 +204,8 @@ through an automatic retry.
 python -m unittest discover -s tests -p 'test_web_app.py' -v
 python -m unittest discover -s tests -p 'test_configure_github_access.py' -v
 node --check web_app/app.js
+node --test tests/test_web_events.mjs
+python -m unittest discover -s tests -p 'test_configure_ngrok_access.py' -v
 ```
 
 API tests use a clearly labeled subprocess fixture, not real model calls. A

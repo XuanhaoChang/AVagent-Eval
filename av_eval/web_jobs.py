@@ -19,7 +19,7 @@ import threading
 import time
 import uuid
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Callable
 
 from av_eval.project_env import load_project_env
 
@@ -52,6 +52,9 @@ class Settings:
     max_saved_jobs: int = 100
     max_storage_bytes: int = 5 * 1024 ** 3
     job_timeout_sec: int = 3600
+    max_event_connections: int = 16
+    event_auth_timeout_sec: float = 5.0
+    event_heartbeat_sec: float = 25.0
 
     def runtime_env(self) -> dict[str, str]:
         env = dict(os.environ)
@@ -177,6 +180,7 @@ class JobManager:
         self.jobs: dict[str, dict[str, Any]] = {}
         self.pending: queue.Queue[str | None] = queue.Queue()
         self.processes: dict[str, subprocess.Popen] = {}
+        self.listeners: dict[str, set[Callable[[dict], None]]] = {}
         self.stopping = False
         for path in settings.data.glob("*/job.json"):
             if not re.fullmatch(r"[a-f0-9]{32}", path.parent.name):
@@ -230,10 +234,32 @@ class JobManager:
             return [{key: job[key] for key in ("id", "status", "created_at", "input")}
                     for job in sorted(self.jobs.values(), key=lambda item: item["created_at"], reverse=True)]
 
+    @staticmethod
+    def event_snapshot(job: dict) -> dict:
+        # Reports, prompts, paths and credentials never enter event messages.
+        return {key: job.get(key) for key in ("id", "status", "started_at", "finished_at")}
+
+    def subscribe(self, job_id: str, listener: Callable[[dict], None]) -> dict:
+        """Atomically register and snapshot, including completion while disconnected."""
+        with self.lock:
+            job = self.get(job_id)
+            self.listeners.setdefault(job_id, set()).add(listener)
+            return self.event_snapshot(job)
+
+    def unsubscribe(self, job_id: str, listener: Callable[[dict], None]) -> None:
+        with self.lock:
+            listeners = self.listeners.get(job_id)
+            if listeners is not None:
+                listeners.discard(listener)
+                if not listeners:
+                    self.listeners.pop(job_id, None)
+
     def _update(self, job_id: str, **fields: Any) -> None:
         with self.lock:
             self.jobs[job_id].update(fields)
             save_json(self.settings.data / job_id / "job.json", self.jobs[job_id])
+            for listener in tuple(self.listeners.get(job_id, ())):
+                listener(self.event_snapshot(self.jobs[job_id]))
 
     @staticmethod
     def _kill(process: subprocess.Popen) -> None:

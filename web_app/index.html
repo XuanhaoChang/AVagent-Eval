@@ -9,6 +9,7 @@
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="styles.css">
   <script src="config.js" defer></script>
+  <script src="job-events.js" defer></script>
   <script src="app.js" defer></script>
 </head>
 <body>
@@ -48,6 +49,7 @@
       <section class="panel output" aria-labelledby="output-title">
         <div class="panel-heading"><h2 id="output-title"><span class="section-number">02</span>评测结果</h2><div class="result-actions"><button id="cancel" class="text-button" hidden>停止任务</button><button id="download" class="text-button" disabled>导出 JSONL ↓</button></div></div>
         <div class="run-line"><span id="job-status" class="status">等待提交</span><span id="job-id" class="mono">—</span></div>
+        <div class="run-line"><span id="event-status" class="muted" role="status" aria-live="polite">任务结束后自动通知，无需定时查询。</span><button id="refresh-job" class="text-button" disabled>获取最新状态 ↻</button></div>
         <div class="metrics" aria-label="本次评测指标"><div><span>检测问题</span><strong id="metric-issues">—</strong></div><div><span>可评估检查</span><strong id="metric-coverage">—<small> / 10</small></strong></div><div><span>运行耗时</span><strong id="metric-time">—<small> s</small></strong></div></div>
         <div id="empty-results" class="empty-results"><div class="empty-symbol" aria-hidden="true">[ · ]</div><h3>等待一份真实的评测结果</h3><p>提交文本、可选参考图和生成视频。<br>结果会呈现问题类型、时间定位及各项检查状态。</p><span>不会将工具失败或证据缺失视为通过。</span></div>
         <div id="report" hidden>

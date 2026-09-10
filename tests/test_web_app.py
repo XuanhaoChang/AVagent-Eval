@@ -58,6 +58,17 @@ class WebAppTests(unittest.TestCase):
         self.assertNotIn("DEMO RUN", self.page)
         self.assertIn("非准确率", self.script)
 
+    def test_events_replace_polling_and_keep_manual_recovery(self):
+        events = (ROOT / "web_app/job-events.js").read_text()
+        self.assertIn("new window.AvagentJobEvents", self.script)
+        self.assertNotIn("beginPolling", self.script)
+        self.assertNotIn("state.poll", self.script)
+        self.assertIn('id="refresh-job"', self.page)
+        self.assertIn('type: "authenticate", token: this.token', events)
+        self.assertNotIn("fetch(", events)
+        self.assertNotIn("?token", events)
+        self.assertIn("this.retries >= delays.length", events)
+
 
 if __name__ == "__main__":
     unittest.main()

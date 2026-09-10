@@ -10,11 +10,11 @@ from pathlib import Path
 import subprocess
 import tempfile
 
-from av_eval.web_jobs import JobManager, Settings, probe_video
+from av_eval.web_jobs import JobManager, Settings, TERMINAL, probe_video
 
 
 def create_app(settings: Settings):
-    from fastapi import FastAPI, HTTPException, Request
+    from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
     from fastapi.middleware.cors import CORSMiddleware
     from fastapi.responses import JSONResponse, Response
     from fastapi.staticfiles import StaticFiles
@@ -22,12 +22,14 @@ def create_app(settings: Settings):
 
     # FastAPI resolves annotations using module globals, including factory-local types.
     globals()["Request"] = Request
+    globals()["WebSocket"] = WebSocket
     if len(settings.token) < 32:
         raise ValueError("The private web access token must have at least 32 characters.")
 
     @asynccontextmanager
     async def lifespan(app):
         app.state.jobs = JobManager(settings)
+        app.state.event_connections = 0
         yield
         await asyncio.to_thread(app.state.jobs.close)
 
@@ -69,6 +71,7 @@ def create_app(settings: Settings):
         missing = settings.readiness()
         return {"service": "avagent-eval", "configured": not missing, "missing": missing,
                 "runtime_note": "Configuration check only; tool availability is reported by each evaluation.",
+                "notifications": "websocket",
                 "limits": {"max_upload_bytes": settings.max_upload_bytes,
                            "max_duration_sec": settings.max_duration_sec, "max_references": 4}}
 
@@ -82,6 +85,111 @@ def create_app(settings: Settings):
             return request.app.state.jobs.get(job_id)
         except KeyError:
             raise HTTPException(404, "任务不存在。") from None
+
+    @app.websocket("/api/jobs/{job_id}/events")
+    async def job_events(websocket: WebSocket, job_id: str):
+        # HTTP middleware/CORS do not protect WebSockets. Check Origin explicitly.
+        # Authenticate the first frame, never a URL parameter or subprotocol.
+        if websocket.headers.get("origin") not in settings.origins or websocket.url.query:
+            await websocket.close(code=4403)
+            return
+        if app.state.event_connections >= settings.max_event_connections:
+            await websocket.close(code=1013)
+            return
+        app.state.event_connections += 1
+        manager = app.state.jobs
+        loop = asyncio.get_running_loop()
+        updates = asyncio.Queue(maxsize=1)
+        tasks = []
+        subscribed = False
+        alive = True
+
+        def deliver(snapshot):
+            if alive:
+                if updates.full():
+                    updates.get_nowait()
+                updates.put_nowait(snapshot)
+
+        def changed(snapshot):
+            try:
+                loop.call_soon_threadsafe(deliver, snapshot)
+            except RuntimeError:
+                pass  # Event loop already stopped; persisted job remains authoritative.
+
+        async def send(message):
+            await asyncio.wait_for(websocket.send_json(message), timeout=10)
+
+        async def receive_text():
+            packet = await websocket.receive()
+            if packet["type"] == "websocket.disconnect":
+                raise WebSocketDisconnect(packet.get("code", 1000))
+            if not isinstance(packet.get("text"), str):
+                raise ValueError("Text frames required")
+            return packet["text"]
+
+        try:
+            await websocket.accept()
+            raw = await asyncio.wait_for(receive_text(), settings.event_auth_timeout_sec)
+            if len(raw) > 4096:
+                await websocket.close(code=4401)
+                return
+            auth = json.loads(raw)
+            if (not isinstance(auth, dict) or auth.get("type") != "authenticate"
+                    or not isinstance(auth.get("token"), str)
+                    or not hmac.compare_digest(auth["token"].encode(), settings.token.encode())):
+                await websocket.close(code=4401)
+                return
+            snapshot = manager.subscribe(job_id, changed)
+            subscribed = True
+            await send({"type": "job", "job": snapshot})
+            if snapshot["status"] in TERMINAL:
+                await websocket.close(code=1000)
+                return
+            receiver = asyncio.create_task(receive_text())
+            updater = asyncio.create_task(updates.get())
+            tasks = [receiver, updater]
+            last_pong = loop.time()
+            while True:
+                done, _ = await asyncio.wait(tasks, timeout=settings.event_heartbeat_sec,
+                                             return_when=asyncio.FIRST_COMPLETED)
+                if not done:
+                    if loop.time() - last_pong > settings.event_heartbeat_sec * 3:
+                        await websocket.close(code=1001)
+                        return
+                    await send({"type": "heartbeat"})
+                if receiver in done:
+                    raw = receiver.result()
+                    if len(raw) > 128 or json.loads(raw) != {"type": "pong"}:
+                        await websocket.close(code=4400)
+                        return
+                    last_pong = loop.time()
+                    receiver = asyncio.create_task(receive_text())
+                    tasks = [receiver, updater]
+                if updater in done:
+                    snapshot = updater.result()
+                    await send({"type": "job", "job": snapshot})
+                    if snapshot["status"] in TERMINAL:
+                        await websocket.close(code=1000)
+                        return
+                    updater = asyncio.create_task(updates.get())
+                tasks = [receiver, updater]
+        except KeyError:
+            await websocket.close(code=4404)
+        except (ValueError, TypeError):
+            await websocket.close(code=4400)
+        except asyncio.TimeoutError:
+            await websocket.close(code=4408)
+        except WebSocketDisconnect:
+            pass
+        finally:
+            alive = False
+            if subscribed:
+                manager.unsubscribe(job_id, changed)
+            for task in tasks:
+                task.cancel()
+            if tasks:
+                await asyncio.gather(*tasks, return_exceptions=True)
+            app.state.event_connections -= 1
 
     @app.post("/api/jobs/{job_id}/cancel")
     def cancel_job(job_id: str, request: Request):
