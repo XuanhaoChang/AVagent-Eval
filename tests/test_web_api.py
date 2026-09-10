@@ -110,7 +110,11 @@ class WebAPITests(unittest.TestCase):
                 else:
                     self.fail("No terminal public event received")
             self.assertEqual(client.get(f"/api/jobs/{job_id}/report.jsonl").status_code, 200)
-            self.assertEqual(len(client.get("/api/jobs").json()), 1)
+            listing = client.get("/api/jobs")
+            self.assertEqual(listing.status_code, 404)
+            self.assertNotIn(job_id, listing.text)
+            self.assertNotIn("video.mp4", listing.text)
+            self.assertEqual(client.get(f"/api/jobs/{job_id}").status_code, 200)
             self.assertEqual(client.get(f"/api/jobs/{job_id}/raw.log").status_code, 404)
 
     def test_public_mode_preserves_origin_and_size_limits(self):

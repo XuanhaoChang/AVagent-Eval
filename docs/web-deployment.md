@@ -37,10 +37,22 @@ the page; a retry button appears only if connection/readiness fails. Change
 deployment configuration in `config.js`, not in a visitor-facing input field.
 The server binds to `127.0.0.1` by default.
 
-Anyone able to reach the public endpoint can submit, inspect, export and cancel
-shared jobs. Uploads can consume model/GPU resources; do not submit confidential
-media or prompts. Existing size, queue and storage limits still apply. CORS is
-not access control against non-browser clients.
+The visitor interface shows only the current evaluation: inputs, findings,
+video localization and a result download. It has no shared history, check-coverage
+dashboard, model configuration or internal diagnostic legend. An incomplete
+check produces a contextual note in that result; its underlying evidence state
+is preserved in the export and server logs, never changed to a passing result.
+Keep the page open until the result is available; a reload does not restore the
+current task. Only one evaluation can be active in a page at a time.
+
+Public mode returns HTTP 404 for `GET /api/jobs`, so visitors cannot enumerate
+server tasks. Private-mode authenticated clients retain this administrative
+list. Public submission, individual job lookup, events, export and cancellation
+still work without a token when the caller knows the random job ID. This is not
+per-user access isolation: previously disclosed IDs remain usable. Do not submit
+confidential media or prompts. Uploads can consume model/GPU resources; existing
+size, queue and storage limits still apply. CORS is not access control against
+non-browser clients. No saved jobs or reports are deleted by this UI change.
 
 Without `--public-access`, the API retains its private mode and generates
 `.local/web-jobs/access-token` with mode `0600`; such deployments need an
@@ -123,7 +135,7 @@ jobs remain failed, not a fabricated successful report.
 
 Heartbeats run every 25 seconds inside the same WebSocket. They are not new
 HTTP requests. Lost connections use up to five retries (2, 5, 15, 30, 60 seconds)
-per selected job subscription, then require the **获取最新状态** button.
+per current job subscription, then require the **刷新结果** button.
 Refreshing that button fetches the latest job once and resubscribes if needed.
 At most 16 event connections, including pending authentication, are admitted;
 incoming frames are limited to 4 KiB by the supplied uvicorn launcher. Slow
@@ -198,16 +210,19 @@ per month (including traffic forwarded to the agent). Verify limits in the
 account dashboard before public release. See [ngrok WebSockets](https://ngrok.com/docs/using-ngrok-with/websockets)
 and [Free limits](https://ngrok.com/docs/pricing-limits/free-plan-limits).
 
-The console shows reported issue count, evaluable-check coverage and elapsed
-time. A missing check or failed tool remains `not_evaluable`; zero issues is not
-proof that the video has no defects. Confidence is not calibrated accuracy.
-No Precision/Recall/F1 is calculated without human ground truth.
+The page shows reported issues, their locations, issue count and elapsed time.
+Check coverage and model configuration remain in the structured export, not in
+the main interface. A missing check or failed tool remains `not_evaluable` in
+the underlying report; zero issues is not proof that the video has no defects.
+Confidence is not calibrated accuracy. No Precision/Recall/F1 is calculated
+without human ground truth.
 
 Uploads are capped at 128 MiB total, four reference images (10 MiB each),
 60 seconds of video and 4096 × 2160 video pixels. The maintained deployment uses
-90 MiB total uploads and is a **public shared workspace**: visitors can see its
-jobs and reports. Uploaded media may be sent to configured model providers.
-There is no per-user task isolation or login session.
+90 MiB total uploads. There is no public task list, but individual jobs and
+reports are accessible to anyone who knows their IDs. Uploaded media may be
+sent to configured model providers. There is no per-user task isolation or
+login session.
 
 Jobs, uploads and raw runner logs stay in the ignored `.local/web-jobs/`
 directory. No raw-log/file-serving endpoint exists. Finished jobs are retained;

@@ -13,7 +13,6 @@ const checkLabels = {
   subtitle_text_logo_watermark: "字幕、文字与水印", av_lip_sync: "音画与唇音同步",
   visual_quality_temporal_artifacts: "画面质量与时序伪影", audio_quality_noise_artifacts: "音频质量与噪声"
 };
-const decisionLabels = { detected: "检测到问题", not_detected: "未检测到", not_evaluable: "无法评估" };
 const terminal = new Set(["completed", "failed", "cancelled"]);
 const configuredBase = window.AVAGENT_CONFIG?.apiBase || "";
 const localHost = ["localhost", "127.0.0.1", "[::1]"].includes(location.hostname);
@@ -38,12 +37,12 @@ function valueText(value) {
   return typeof value === "object" ? JSON.stringify(value) : String(value);
 }
 function setControls() {
-  $("run").disabled = !state.connected || !state.ready || state.submitting;
-  $("input-fields").disabled = state.submitting;
-  $("refresh-history").disabled = !state.connected;
+  const active = state.job && !terminal.has(state.job.status);
+  $("run").disabled = !state.connected || !state.ready || state.submitting || !!active;
+  $("input-fields").disabled = state.submitting || !!active;
   $("refresh-job").disabled = !state.connected || !state.job;
   $("submit-hint").textContent = state.submitting ? "正在上传并创建任务…" :
-    state.ready ? "由服务器运行 avagent" : state.connected ? "后端配置尚未完成" : "请先连接后端";
+    active ? "正在评测…" : state.ready ? "由 avagent 分析视频" : "服务暂不可用";
 }
 function safeBase(input) {
   const url = new URL(input);
@@ -64,15 +63,15 @@ async function api(path, options = {}, snapshot = state) {
       cache: "no-store", credentials: "omit", redirect: "error",
       headers: { ...(ngrok ? { "ngrok-skip-browser-warning": "1" } : {}), ...(options.headers || {}) } });
     if (!response.ok) {
-      if (response.status === 401) throw new Error("后端仍启用了令牌验证，请管理员启用公开访问模式。");
+      if ([401, 403, 503].includes(response.status)) throw new Error("评测服务暂不可用，请稍后重试。");
       let detail;
       try { detail = (await response.json()).detail; } catch { /* A proxy may return HTML. */ }
       throw new Error(typeof detail === "string" ? detail : `服务器返回 HTTP ${response.status}`);
     }
     return response;
   } catch (error) {
-    if (error.name === "AbortError") throw new Error("请求超时。上传超时时任务可能已创建，请刷新运行记录确认后再提交。");
-    if (error instanceof TypeError) throw new Error("无法连接后端，请检查 HTTPS 地址、网络和服务器的跨域配置。");
+    if (error.name === "AbortError") throw new Error(options.body ? "上传响应超时，未能确认是否提交成功，请勿连续重复提交。" : "请求超时，请稍后重试。");
+    if (error instanceof TypeError) throw new Error("连接中断，请检查网络后重试。");
     throw error;
   } finally { clearTimeout(timer); }
 }
@@ -94,23 +93,19 @@ async function connectBackend() {
     const snapshot = { base: state.base };
     const health = await (await api("/api/health", {}, snapshot)).json();
     if (generation !== state.generation) return;
-    if (health.service !== "avagent-eval") throw new Error("该地址不是 avagent-eval 后端。");
+    if (health.service !== "avagent-eval") throw new Error("评测服务暂不可用，请稍后重试。");
     state.connected = true;
     state.ready = health.configured;
     if (Number.isFinite(health.limits?.max_upload_bytes) && health.limits.max_upload_bytes > 0) {
       state.maxUploadBytes = health.limits.max_upload_bytes;
       $("upload-limit").textContent = Math.floor(state.maxUploadBytes / 1048576);
     }
-    status("connection-status", state.ready ? "后端已连接" : "后端待配置", state.ready ? "good" : "busy");
+    status("connection-status", state.ready ? "服务可用" : "暂不可用", state.ready ? "good" : "busy");
     $("retry-connection").hidden = state.ready;
-    if (!state.ready) notify(`服务器仍缺少配置：${health.missing.join("、")}。请管理员配置后重新连接。`);
+    if (!state.ready) notify("评测服务尚未就绪，请稍后重试。");
     state.job = null;
     renderJob(null);
     setControls();
-    try { await refreshHistory(); }
-    catch (error) {
-      if (generation === state.generation) notify(`后端已连接，但运行记录加载失败：${error.message}`);
-    }
   } catch (error) {
     if (generation !== state.generation) return;
     status("connection-status", "连接失败", "bad");
@@ -147,7 +142,7 @@ $("references").addEventListener("change", () => {
 
 $("evaluation-form").addEventListener("submit", async (event) => {
   event.preventDefault();
-  if (!state.ready || state.submitting) return;
+  if (!state.ready || state.submitting || (state.job && !terminal.has(state.job.status))) return;
   const video = $("video-input").files[0];
   const refs = Array.from($("references").files);
   if (!video) { notify("请选择生成视频。"); return; }
@@ -168,7 +163,6 @@ $("evaluation-form").addEventListener("submit", async (event) => {
     state.job = job;
     renderJob(job);
     beginEvents(job.id);
-    await refreshHistory();
   } catch (error) { notify(error.message); }
   finally { state.submitting = false; $("retry-connection").disabled = false; setControls(); }
 });
@@ -178,23 +172,30 @@ function renderJob(job) {
   const report = job?.report;
   $("report").hidden = !report;
   $("empty-results").hidden = !!report;
-  $("job-id").textContent = job ? `RUN ${job.id.slice(0, 10)}` : "—";
-  $("job-id").title = job?.id || "";
+  $("job-updates").hidden = !job;
+  $("result-metrics").hidden = !report;
   const active = job && !terminal.has(job.status);
   status("job-status", job ? jobLabels[job.status] || job.status : "等待提交",
     active ? "busy" : job?.status === "completed" ? "good" : job?.status === "failed" ? "bad" : "");
   $("cancel").hidden = !active;
   $("download").disabled = !report;
   $("metric-issues").textContent = report ? report.metrics.issue_count : "—";
-  $("metric-coverage").replaceChildren(document.createTextNode(report ? report.metrics.evaluable_checks : "—"), node("small", " / 10"));
   const elapsed = report?.metrics.elapsed_sec ?? (job?.started_at ? (job.finished_at || Date.now() / 1000) - job.started_at : null);
   $("metric-time").replaceChildren(document.createTextNode(Number.isFinite(elapsed) ? Math.max(0, elapsed).toFixed(1) : "—"), node("small", " s"));
   const empty = $("empty-results");
-  empty.querySelector("h3").textContent = active ? jobLabels[job.status] : job?.error ? "这次评测没有产生有效报告" : job?.status === "cancelled" ? "任务已停止" : "等待一份真实的评测结果";
-  empty.querySelector("p").textContent = job?.error || (active ? "任务在服务器上执行，完成后自动通知；关闭页面不会取消任务。" : job?.status === "cancelled" ? "未完成的检查不会被标记为通过。" : "提交文本、可选参考图和生成视频。结果会呈现问题类型、时间定位及各项检查状态。");
+  empty.querySelector("h3").textContent = active ? jobLabels[job.status] : job?.status === "failed" ? "评测未完成" : job?.status === "cancelled" ? "评测已停止" : "等待评测";
+  empty.querySelector("p").textContent = active ? "正在分析视频，请保持页面打开。完成后将在这里显示结果。" : job?.status === "failed" ? "本次未能生成结果，请稍后重试。" : job?.status === "cancelled" ? "可重新提交视频开始评测。" : "填写文本描述并上传视频，点击“开始评测”。";
+  setControls();
   if (!report) return;
   $("issue-list").replaceChildren();
+  const incomplete = (report.checks || []).filter((check) => check.decision === "not_evaluable" || check.execution_status !== "ok");
+  $("report-notice").hidden = incomplete.length === 0;
+  $("report-notice").textContent = incomplete.map((check) => {
+    const reason = check.execution_status === "failed" ? "检测未完成" : check.execution_status === "not_applicable" ? "当前输入不适用" : "现有信息不足以判断";
+    return `${checkLabels[check.check_name] || "部分检测项目"}：${reason}。`;
+  }).join("\n");
   $("no-issues").hidden = report.issues.length > 0;
+  $("no-issues").textContent = incomplete.length ? "本次未返回问题记录，部分项目未给出检测结论。" : "本次未检测到问题。";
   report.issues.forEach((issue, index) => {
     const article = node("article", undefined, "issue");
     const top = node("div", undefined, "issue-top");
@@ -216,24 +217,12 @@ function renderJob(job) {
     }
     $("issue-list").append(article);
   });
-  $("check-list").replaceChildren();
-  report.checks.forEach((check) => {
-    const decision = check.decision in decisionLabels ? check.decision : "not_evaluable";
-    const detail = node("details", undefined, "check-row");
-    const summary = node("summary");
-    summary.append(node("span", checkLabels[check.check_name] || check.check_name), node("span", decisionLabels[decision], `check-label ${decision}`));
-    const limitations = (check.limitations || []).map(valueText).join("\n");
-    detail.append(summary, node("p", `执行状态：${check.execution_status}\n证据级别：${check.evidence_level}\n工具：${(check.tool_refs || []).map(valueText).join("、") || "—"}\n${limitations || "未附加限制说明。"}`));
-    $("check-list").append(detail);
-  });
-  $("coverage-note").textContent = `${(report.metrics.coverage * 100).toFixed(0)}% 可评估 · 非准确率`;
-  $("model-info").textContent = JSON.stringify(report.models, null, 2);
 }
 
 function stopEvents() {
   state.events?.close();
   state.events = null;
-  $("event-status").textContent = "任务结束后自动通知，无需定时查询。";
+  $("event-status").textContent = "";
 }
 
 function beginEvents(jobId) {
@@ -241,11 +230,11 @@ function beginEvents(jobId) {
   const generation = ++state.generation;
   const snapshot = { base: state.base };
   const labels = {
-    connecting: "正在连接结果通知…", connected: "已订阅任务状态；完成后自动显示报告。",
-    reconnecting: "通知连接中断，正在重连；服务器任务不受影响。",
-    disconnected: "自动重连已暂停以节省额度；可点击“获取最新状态”。",
-    denied: "通知连接被拒绝，请检查后端的公开访问模式及来源配置。",
-    missing: "任务不存在，请刷新运行记录。"
+    connecting: "正在获取评测状态…", connected: "评测完成后自动显示结果。",
+    reconnecting: "连接中断，正在重连；评测仍在继续。",
+    disconnected: "连接暂未恢复，可点击“刷新结果”。",
+    denied: "暂时无法获取结果，请稍后重试。",
+    missing: "该评测已不可用，请重新提交。"
   };
   state.events = new window.AvagentJobEvents({ ...snapshot, jobId, publicAccess: true,
     onStatus: (kind) => {
@@ -264,47 +253,16 @@ function beginEvents(jobId) {
         if (generation !== state.generation) return;
         state.job = job;
         renderJob(job);
-        $("event-status").textContent = "已收到最终状态，通知连接已关闭。";
-        await refreshHistory();
+        $("event-status").textContent = "";
       } catch (error) {
         if (generation === state.generation) {
-          $("event-status").textContent = "最终状态获取失败，可点击“获取最新状态”重试。";
+          $("event-status").textContent = "结果获取失败，可点击“刷新结果”重试。";
           notify(error.message);
         }
       }
     }
   });
 }
-async function refreshHistory() {
-  const snapshot = { base: state.base };
-  const jobs = await (await api("/api/jobs", {}, snapshot)).json();
-  if (snapshot.base !== state.base || !state.connected) return;
-  $("history-list").replaceChildren();
-  if (!jobs.length) { $("history-list").append(node("p", "还没有任务。提交一次评测后，记录会显示在这里。", "empty-note")); return; }
-  jobs.forEach((job) => {
-    const row = node("div", undefined, "history-row");
-    const date = node("time", new Date(job.created_at * 1000).toLocaleString());
-    date.dateTime = new Date(job.created_at * 1000).toISOString();
-    const select = node("button", "查看 →", "text-button");
-    select.type = "button";
-    select.addEventListener("click", async () => {
-      try {
-        stopEvents();
-        const generation = ++state.generation;
-        const selected = await (await api(`/api/jobs/${encodeURIComponent(job.id)}`)).json();
-        if (generation !== state.generation) return;
-        state.job = selected; renderJob(selected);
-        if (!terminal.has(selected.status)) beginEvents(selected.id);
-        else $("event-status").textContent = "已载入最终状态，无需订阅通知。";
-        $("output-title").scrollIntoView({ block: "start" });
-      } catch (error) { notify(error.message); }
-    });
-    row.append(node("span", job.id.slice(0, 10), "mono"), node("span", job.input.video_name, "history-file"),
-      node("span", jobLabels[job.status] || job.status), select, date);
-    $("history-list").append(row);
-  });
-}
-$("refresh-history").addEventListener("click", () => refreshHistory().catch((error) => notify(error.message)));
 $("refresh-job").addEventListener("click", async () => {
   if (!state.connected || !state.job) return;
   stopEvents();
@@ -317,7 +275,7 @@ $("refresh-job").addEventListener("click", async () => {
     if (generation !== state.generation) return;
     state.job = job; renderJob(job);
     if (!terminal.has(job.status)) beginEvents(job.id);
-    else $("event-status").textContent = "已载入最终状态，无需订阅通知。";
+    else $("event-status").textContent = "";
     notify();
   } catch (error) {
     if (generation === state.generation) notify(error.message);
@@ -330,13 +288,13 @@ window.addEventListener("pageshow", (event) => {
   if (event.persisted && state.connected && state.job && !terminal.has(state.job.status)) beginEvents(state.job.id);
 });
 $("cancel").addEventListener("click", async () => {
-  if (!state.job || !confirm("停止当前任务？已完成的其他任务不会受影响。")) return;
+  if (!state.job || !confirm("停止本次评测？")) return;
   $("cancel").disabled = true;
   try {
     state.job = await (await api(`/api/jobs/${state.job.id}/cancel`, { method: "POST" })).json();
     if (terminal.has(state.job.status)) {
       stopEvents(); ++state.generation;
-      $("event-status").textContent = "任务已结束，无需订阅通知。";
+      $("event-status").textContent = "";
     }
     renderJob(state.job);
   }

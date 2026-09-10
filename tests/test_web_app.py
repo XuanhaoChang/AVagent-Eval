@@ -69,7 +69,19 @@ class WebAppTests(unittest.TestCase):
         if ".ngrok-free." in base:
             self.assertIn('deploymentMode: "fixed"', config)
         self.assertNotIn("DEMO RUN", self.page)
-        self.assertIn("非准确率", self.script)
+
+    def test_page_is_for_evaluation_not_shared_administration(self):
+        for removed in ("history-title", "history-list", "refresh-history", "check-list",
+                        "coverage-note", "metric-coverage", "model-info", "job-id"):
+            self.assertNotIn(removed, self.parser.ids)
+            self.assertNotIn(f'$("{removed}")', self.script)
+        for text in ("不会将工具失败", "无法评估", "运行记录", "检查覆盖", "证据边界",
+                     "非人工标注", "证据不足时保留未知", "运行配置与报告说明"):
+            self.assertNotIn(text, self.page + self.script)
+        self.assertNotIn("refreshHistory", self.script)
+        self.assertNotIn('api("/api/jobs", {},', self.script)
+        self.assertIn('id="report-notice"', self.page)
+        self.assertIn('id="result-metrics"', self.page)
 
     def test_events_replace_polling_and_keep_manual_recovery(self):
         events = (ROOT / "web_app/job-events.js").read_text()

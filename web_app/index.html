@@ -3,14 +3,14 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="avagent-eval — 输入文本、参考图与生成视频，检查音视频缺陷及证据覆盖。">
+  <meta name="description" content="avagent-eval — 上传生成视频、文本描述与参考图，检测音视频问题并定位到对应片段。">
   <meta name="referrer" content="no-referrer">
   <title>avagent-eval · 音视频缺陷评测</title>
   <link rel="icon" href="icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="styles.css?v=20260909-clean">
-  <script src="config.js?v=20260909-clean" defer></script>
-  <script src="job-events.js?v=20260909-clean" defer></script>
-  <script src="app.js?v=20260909-clean" defer></script>
+  <link rel="stylesheet" href="styles.css?v=20260910-evaluate">
+  <script src="config.js?v=20260910-evaluate" defer></script>
+  <script src="job-events.js?v=20260910-evaluate" defer></script>
+  <script src="app.js?v=20260910-evaluate" defer></script>
 </head>
 <body>
   <a class="skip" href="#main">跳转到评测</a>
@@ -20,7 +20,7 @@
     <div class="header-links"><span id="connection-status" class="status">正在连接…</span><a href="https://github.com/XuanhaoChang/AVagent-Eval" target="_blank" rel="noopener noreferrer">GitHub ↗</a></div>
   </header>
   <main id="main">
-    <div class="page-heading"><div><p class="eyebrow">RESEARCH WORKSPACE</p><h1>音视频缺陷评测</h1><p>从生成条件到问题定位，查看每一项检查的证据边界。</p></div><span class="mode-label">单样本评测 <span>/</span> Text · Ref · AV</span></div>
+    <div class="page-heading"><div><p class="eyebrow">AUDIO–VIDEO EVALUATION</p><h1>音视频缺陷评测</h1><p>上传生成视频，查看检测到的问题及对应片段。</p></div><span class="mode-label">单样本评测 <span>/</span> Text · Ref · AV</span></div>
     <p id="notice" class="notice" role="status" aria-live="polite" hidden></p>
     <button id="retry-connection" class="text-button connection-retry" type="button" hidden>重试连接</button>
     <div class="workspace">
@@ -33,29 +33,25 @@
             <div id="reference-previews" class="reference-previews" aria-label="已选参考图"></div>
             <label class="field">生成视频 <span class="required">必填</span><input id="video-input" name="video" type="file" accept="video/mp4,video/quicktime,video/webm" required><small>MP4 / MOV / WebM，最长 60 秒，总上传小于 <span id="upload-limit">128</span> MiB。</small></label>
             <figure id="video-figure" hidden><video id="video-preview" controls preload="metadata" playsinline></video><figcaption id="video-caption"></figcaption></figure>
-            <div class="submit-row"><button id="run" class="primary" type="submit" disabled>开始评测 <span aria-hidden="true">→</span></button><span id="submit-hint">请先连接后端</span></div>
+            <div class="submit-row"><button id="run" class="primary" type="submit" disabled>开始评测 <span aria-hidden="true">→</span></button><span id="submit-hint">正在连接服务…</span></div>
           </fieldset>
         </form>
       </section>
       <section class="panel output" aria-labelledby="output-title">
-        <div class="panel-heading"><h2 id="output-title"><span class="section-number">02</span>评测结果</h2><div class="result-actions"><button id="cancel" class="text-button" hidden>停止任务</button><button id="download" class="text-button" disabled>导出 JSONL ↓</button></div></div>
-        <div class="run-line"><span id="job-status" class="status">等待提交</span><span id="job-id" class="mono">—</span></div>
-        <div class="run-line"><span id="event-status" class="muted" role="status" aria-live="polite">任务结束后自动通知，无需定时查询。</span><button id="refresh-job" class="text-button" disabled>获取最新状态 ↻</button></div>
-        <div class="metrics" aria-label="本次评测指标"><div><span>检测问题</span><strong id="metric-issues">—</strong></div><div><span>可评估检查</span><strong id="metric-coverage">—<small> / 10</small></strong></div><div><span>运行耗时</span><strong id="metric-time">—<small> s</small></strong></div></div>
-        <div id="empty-results" class="empty-results"><div class="empty-symbol" aria-hidden="true">[ · ]</div><h3>等待一份真实的评测结果</h3><p>提交文本、可选参考图和生成视频。<br>结果会呈现问题类型、时间定位及各项检查状态。</p><span>不会将工具失败或证据缺失视为通过。</span></div>
+        <div class="panel-heading"><h2 id="output-title"><span class="section-number">02</span>评测结果</h2><div class="result-actions"><button id="cancel" class="text-button" hidden>停止评测</button><button id="download" class="text-button" disabled>下载结果 ↓</button></div></div>
+        <div class="run-line"><span id="job-status" class="status">等待提交</span></div>
+        <div id="job-updates" class="run-line" hidden><span id="event-status" class="muted" role="status" aria-live="polite"></span><button id="refresh-job" class="text-button" disabled>刷新结果 ↻</button></div>
+        <div id="result-metrics" class="metrics" aria-label="本次评测结果" hidden><div><span>检测到的问题</span><strong id="metric-issues">—</strong></div><div><span>评测用时</span><strong id="metric-time">—<small> s</small></strong></div></div>
+        <div id="empty-results" class="empty-results"><div class="empty-symbol" aria-hidden="true">[ · ]</div><h3>等待评测</h3><p>填写文本描述并上传视频，点击“开始评测”。</p></div>
         <div id="report" hidden>
-          <div class="subheading"><h3>问题明细</h3><span class="muted">模型与工具报告，非人工标注</span></div>
-          <p id="no-issues" class="empty-note" hidden>本次未报告问题。请结合下方检查覆盖情况阅读，不代表所有维度均无缺陷。</p>
+          <div class="subheading"><h3>问题明细</h3></div>
+          <p id="report-notice" class="result-note" role="status" hidden></p>
+          <p id="no-issues" class="empty-note" hidden>本次未检测到问题。</p>
           <div id="issue-list" class="issue-list"></div>
-          <div class="subheading check-heading"><h3>检查覆盖</h3><span id="coverage-note" class="muted"></span></div>
-          <div id="check-list" class="check-list"></div>
-          <details class="report-details"><summary>运行配置与报告说明</summary><pre id="model-info"></pre><p>覆盖率 = 可评估检查数 / 10。置信度为模型报告值，不是准确率；未提供人工真值时，不计算 Precision、Recall 或 F1。原始运行日志保存在服务器，JSONL 导出为结构化报告。</p></details>
         </div>
-        <div class="legend"><span><i class="legend-dot detected"></i>检测到问题</span><span><i class="legend-dot clear"></i>未检测到</span><span><i class="legend-dot unknown"></i>无法评估</span></div>
       </section>
     </div>
-    <section class="history panel" aria-labelledby="history-title"><div class="panel-heading"><h2 id="history-title">运行记录</h2><button id="refresh-history" class="text-button" disabled>刷新 ↻</button></div><div id="history-list"><p class="empty-note">连接服务器后，可查看此共享工作区的任务。</p></div></section>
-    <footer><span>avagent-eval</span><span>Evidence-aware evaluation · 证据不足时保留未知</span></footer>
+    <footer><span>avagent-eval</span><span>Generated audio-video evaluation</span></footer>
   </main>
 </body>
 </html>

@@ -80,6 +80,8 @@ def create_app(settings: Settings):
 
     @app.get("/api/jobs")
     def list_jobs(request: Request):
+        if settings.public_access:
+            raise HTTPException(404, "公开服务不提供任务列表。")
         return request.app.state.jobs.list()
 
     @app.get("/api/jobs/{job_id}")

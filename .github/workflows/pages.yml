@@ -8,6 +8,7 @@ on:
       - 'av_eval/web_*.py'
       - 'tests/test_web_*.py'
       - 'tests/test_web_events.mjs'
+      - 'tests/test_web_render.mjs'
       - 'scripts/configure_github_access.py'
       - 'scripts/configure_ngrok_access.py'
       - 'tests/test_configure_github_access.py'
@@ -41,6 +42,7 @@ jobs:
       - run: python -m unittest discover -s tests -p 'test_web_app.py' -v
       - run: node --check web_app/app.js
       - run: node --test tests/test_web_events.mjs
+      - run: node --test tests/test_web_render.mjs
       - run: python -m unittest discover -s tests -p 'test_configure_ngrok_access.py' -v
       - run: python -m unittest discover -s tests -p 'test_configure_github_access.py' -v
       - uses: actions/upload-pages-artifact@v3
