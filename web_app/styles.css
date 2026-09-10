@@ -14,3 +14,37 @@ main{max-width:1424px;margin:auto;padding:34px 4vw 20px}.page-heading{display:fl
 .metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.result-note{font-size:12px;line-height:1.8;color:#86552c;background:#faf6ef;border-radius:4px;padding:10px 13px;white-space:pre-wrap;overflow-wrap:anywhere}
 @media(max-width:640px){.connection-form{grid-template-columns:1fr}.connection-form button{margin-top:0;justify-self:start}}
 @media(prefers-reduced-motion:no-preference){button{transition:background .15s,border-color .15s}.status.busy:before{animation:pulse 1.5s infinite}@keyframes pulse{50%{opacity:.25}}}
+
+/* Keep the two working areas balanced after removing the admin panels. */
+main{max-width:1200px;padding:26px 24px 16px}
+.topbar{height:68px;padding:0 max(24px,calc((100vw - 1152px)/2))}
+.page-heading{margin-bottom:22px}
+.workspace{grid-template-columns:minmax(360px,.9fr) minmax(0,1.1fr);gap:20px;align-items:stretch}
+.workspace>.panel{min-width:0}
+.workspace:has(#report:not([hidden])){align-items:start}
+.output{display:flex;flex-direction:column}
+.panel-heading{height:52px;flex-shrink:0;padding:0 20px}
+fieldset{padding:20px}
+.field{margin-bottom:17px}
+textarea{min-height:112px;margin-top:8px}
+input[type=file]{padding:9px;margin-top:8px}
+.submit-row{padding-top:16px}
+.run-line{padding:18px 20px 0}
+.empty-results{flex:1;min-height:240px;padding:28px 24px}
+.empty-symbol{font-size:36px;letter-spacing:6px;padding-left:6px;margin-bottom:14px}
+.empty-results p{max-width:320px}
+footer{padding-top:18px}
+@media(max-width:800px){
+  main{padding:24px 20px 16px}
+  .topbar{padding:0 20px}
+  .workspace{grid-template-columns:minmax(0,1fr);gap:18px}
+  .empty-results{min-height:220px;flex:none}
+}
+@media(max-width:480px){
+  main{padding:22px 16px 14px}
+  .topbar{height:64px;padding:0 16px}
+  .panel-heading{padding:0 17px}
+  fieldset{padding:18px 17px}
+  .page-heading{margin-bottom:18px}
+  .empty-results{min-height:200px;padding:24px 18px}
+}

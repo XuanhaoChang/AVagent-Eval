@@ -94,6 +94,16 @@ class WebAppTests(unittest.TestCase):
         self.assertNotIn("?token", events)
         self.assertIn("this.retries >= delays.length", events)
 
+    def test_compact_layout_keeps_aligned_columns_and_mobile_stacking(self):
+        styles = (ROOT / "web_app/styles.css").read_text()
+        self.assertIn("main{max-width:1200px;", styles)
+        self.assertIn("minmax(360px,.9fr) minmax(0,1.1fr)", styles)
+        self.assertIn("align-items:stretch", styles)
+        self.assertIn(".output{display:flex;flex-direction:column}", styles)
+        self.assertIn(".empty-results{flex:1;", styles)
+        self.assertIn("@media(max-width:800px)", styles)
+        self.assertIn('name="prompt" rows="4"', self.page)
+
     def test_ngrok_api_requests_skip_html_interstitial_without_dropping_auth(self):
         self.assertIn('"ngrok-skip-browser-warning": "1"', self.script)
         self.assertIn('...(ngrok ?', self.script)
