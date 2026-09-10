@@ -7,7 +7,7 @@
   <meta name="referrer" content="no-referrer">
   <title>avagent-eval · 音视频缺陷评测</title>
   <link rel="icon" href="icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="styles.css?v=20260910-layout">
+  <link rel="stylesheet" href="styles.css?v=20260910-align">
   <script src="config.js?v=20260910-evaluate" defer></script>
   <script src="job-events.js?v=20260910-evaluate" defer></script>
   <script src="app.js?v=20260910-evaluate" defer></script>
@@ -28,7 +28,7 @@
         <div class="panel-heading"><h2 id="input-title"><span class="section-number">01</span>输入条件</h2><span class="muted">INPUT</span></div>
         <form id="evaluation-form">
           <fieldset id="input-fields">
-            <label class="field">文本描述 <span class="required">必填</span><textarea id="prompt" name="prompt" rows="4" maxlength="10000" required placeholder="描述预期的人物、动作、台词及约束。例如：参考图中的人物面对镜头说出指定台词，保持服装一致，不添加字幕。"></textarea><small>填写生成时的原始 prompt，有助于检查指令遵循。</small></label>
+            <label class="field">文本描述 <span class="required">必填</span><textarea id="prompt" name="prompt" rows="6" maxlength="10000" required placeholder="描述预期的人物、动作、台词及约束。例如：参考图中的人物面对镜头说出指定台词，保持服装一致，不添加字幕。"></textarea><small>填写生成时的原始 prompt，有助于检查指令遵循。</small></label>
             <label class="field">参考图 <span class="optional">可选 · 最多 4 张</span><input id="references" name="references" type="file" accept="image/png,image/jpeg,image/webp" multiple><small>PNG / JPG / WebP，每张不超过 10 MiB。</small></label>
             <div id="reference-previews" class="reference-previews" aria-label="已选参考图"></div>
             <label class="field">生成视频 <span class="required">必填</span><input id="video-input" name="video" type="file" accept="video/mp4,video/quicktime,video/webm" required><small>MP4 / MOV / WebM，最长 60 秒，总上传小于 <span id="upload-limit">128</span> MiB。</small></label>
