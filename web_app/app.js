@@ -106,7 +106,11 @@ async function connectBackend() {
     if (!state.ready) notify(`服务器仍缺少配置：${health.missing.join("、")}。请管理员配置后重新连接。`);
     state.job = null;
     renderJob(null);
-    await refreshHistory();
+    setControls();
+    try { await refreshHistory(); }
+    catch (error) {
+      if (generation === state.generation) notify(`后端已连接，但运行记录加载失败：${error.message}`);
+    }
   } catch (error) {
     if (generation !== state.generation) return;
     status("connection-status", "连接失败", "bad");
