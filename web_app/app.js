@@ -2,7 +2,7 @@
 "use strict";
 
 const $ = (id) => document.getElementById(id);
-const state = { base: "", token: "", connected: false, ready: false, job: null,
+const state = { base: "", connected: false, ready: false, job: null,
   events: null, generation: 0, previewJobId: null, videoURL: null, referenceURLs: [], submitting: false,
   maxUploadBytes: 128 * 1048576 };
 const jobLabels = { queued: "队列等待中", running: "avagent 正在评测", completed: "评测完成", failed: "评测失败", cancelled: "已停止" };
@@ -62,9 +62,9 @@ async function api(path, options = {}, snapshot = state) {
     const ngrok = /\.(?:ngrok-free|ngrok)\.(?:app|dev)$/.test(new URL(snapshot.base).hostname);
     const response = await fetch(snapshot.base + path, { ...options, signal: controller.signal,
       cache: "no-store", credentials: "omit", redirect: "error",
-      headers: { Authorization: `Bearer ${snapshot.token}`,
-        ...(ngrok ? { "ngrok-skip-browser-warning": "1" } : {}), ...(options.headers || {}) } });
+      headers: { ...(ngrok ? { "ngrok-skip-browser-warning": "1" } : {}), ...(options.headers || {}) } });
     if (!response.ok) {
+      if (response.status === 401) throw new Error("后端仍启用了令牌验证，请管理员启用公开访问模式。");
       let detail;
       try { detail = (await response.json()).detail; } catch { /* A proxy may return HTML. */ }
       throw new Error(typeof detail === "string" ? detail : `服务器返回 HTTP ${response.status}`);
@@ -77,8 +77,7 @@ async function api(path, options = {}, snapshot = state) {
   } finally { clearTimeout(timer); }
 }
 
-$("connection-form").addEventListener("submit", async (event) => {
-  event.preventDefault();
+async function connectBackend() {
   stopEvents();
   const generation = ++state.generation;
   state.connected = false;
@@ -86,13 +85,12 @@ $("connection-form").addEventListener("submit", async (event) => {
   $("connect").disabled = true;
   $("cancel").hidden = true;
   $("download").disabled = true;
+  status("connection-status", "正在连接…", "busy");
   setControls();
   notify();
   try {
     state.base = safeBase($("api-base").value.trim());
-    state.token = $("access-token").value.trim();
-    if (!state.token) throw new Error("请输入网站访问令牌。");
-    const snapshot = { base: state.base, token: state.token };
+    const snapshot = { base: state.base };
     const health = await (await api("/api/health", {}, snapshot)).json();
     if (generation !== state.generation) return;
     if (health.service !== "avagent-eval") throw new Error("该地址不是 avagent-eval 后端。");
@@ -112,8 +110,13 @@ $("connection-form").addEventListener("submit", async (event) => {
   } catch (error) {
     if (generation !== state.generation) return;
     status("connection-status", "连接失败", "bad");
+    $("connection-panel").open = true;
     notify(error.message);
-  } finally { $("connect").disabled = false; setControls(); }
+  } finally { if (generation === state.generation) { $("connect").disabled = false; setControls(); } }
+}
+$("connection-form").addEventListener("submit", (event) => {
+  event.preventDefault();
+  connectBackend();
 });
 
 $("video-input").addEventListener("change", () => {
@@ -187,7 +190,7 @@ function renderJob(job) {
   $("metric-time").replaceChildren(document.createTextNode(Number.isFinite(elapsed) ? Math.max(0, elapsed).toFixed(1) : "—"), node("small", " s"));
   const empty = $("empty-results");
   empty.querySelector("h3").textContent = active ? jobLabels[job.status] : job?.error ? "这次评测没有产生有效报告" : job?.status === "cancelled" ? "任务已停止" : "等待一份真实的评测结果";
-  empty.querySelector("p").textContent = job?.error || (active ? "任务在服务器上执行。页面会自动查询状态；关闭页面不会取消任务。" : job?.status === "cancelled" ? "未完成的检查不会被标记为通过。" : "提交文本、可选参考图和生成视频。结果会呈现问题类型、时间定位及各项检查状态。");
+  empty.querySelector("p").textContent = job?.error || (active ? "任务在服务器上执行，完成后自动通知；关闭页面不会取消任务。" : job?.status === "cancelled" ? "未完成的检查不会被标记为通过。" : "提交文本、可选参考图和生成视频。结果会呈现问题类型、时间定位及各项检查状态。");
   if (!report) return;
   $("issue-list").replaceChildren();
   $("no-issues").hidden = report.issues.length > 0;
@@ -235,15 +238,15 @@ function stopEvents() {
 function beginEvents(jobId) {
   stopEvents();
   const generation = ++state.generation;
-  const snapshot = { base: state.base, token: state.token };
+  const snapshot = { base: state.base };
   const labels = {
     connecting: "正在连接结果通知…", connected: "已订阅任务状态；完成后自动显示报告。",
     reconnecting: "通知连接中断，正在重连；服务器任务不受影响。",
     disconnected: "自动重连已暂停以节省额度；可点击“获取最新状态”。",
-    denied: "通知连接未获授权，请检查访问令牌或重新连接服务器。",
+    denied: "通知连接被拒绝，请检查后端的公开访问模式及来源配置。",
     missing: "任务不存在，请刷新运行记录。"
   };
-  state.events = new window.AvagentJobEvents({ ...snapshot, jobId,
+  state.events = new window.AvagentJobEvents({ ...snapshot, jobId, publicAccess: true,
     onStatus: (kind) => {
       if (generation === state.generation) $("event-status").textContent = labels[kind];
     },
@@ -272,9 +275,9 @@ function beginEvents(jobId) {
   });
 }
 async function refreshHistory() {
-  const snapshot = { base: state.base, token: state.token };
+  const snapshot = { base: state.base };
   const jobs = await (await api("/api/jobs", {}, snapshot)).json();
-  if (snapshot.base !== state.base || snapshot.token !== state.token || !state.connected) return;
+  if (snapshot.base !== state.base || !state.connected) return;
   $("history-list").replaceChildren();
   if (!jobs.length) { $("history-list").append(node("p", "还没有任务。提交一次评测后，记录会显示在这里。", "empty-note")); return; }
   jobs.forEach((job) => {
@@ -305,7 +308,7 @@ $("refresh-job").addEventListener("click", async () => {
   if (!state.connected || !state.job) return;
   stopEvents();
   const generation = ++state.generation;
-  const snapshot = { base: state.base, token: state.token };
+  const snapshot = { base: state.base };
   const jobId = state.job.id;
   $("refresh-job").disabled = true;
   try {
@@ -355,3 +358,4 @@ if (window.AVAGENT_CONFIG?.deploymentMode === "temporary") {
   $("ingress-note").textContent = "当前通过 Cloudflare 临时 HTTPS 隧道连接服务器，仅供联调。隧道重启后地址可能变化，正式部署需固定域名入口。";
 }
 setControls();
+if ($("api-base").value) connectBackend();

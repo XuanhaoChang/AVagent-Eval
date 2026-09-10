@@ -55,6 +55,7 @@ class Settings:
     max_event_connections: int = 16
     event_auth_timeout_sec: float = 5.0
     event_heartbeat_sec: float = 25.0
+    public_access: bool = False
 
     def runtime_env(self) -> dict[str, str]:
         env = dict(os.environ)

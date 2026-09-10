@@ -19,6 +19,7 @@ python -m venv .local/web-api-venv
 .local/web-api-venv/bin/python scripts/run_web_api.py \
   --runner-python /absolute/path/to/avagent/python \
   --port 8766 \
+  --public-access \
   --origin http://127.0.0.1:8766
 ```
 
@@ -28,11 +29,23 @@ installed by the web setup. Set `AVAGENT_VISUAL_MODEL` and any specialist
 overrides in the server environment, as for normal CLI evaluations. These are
 internal AVAgent branch settings, not alternative evaluators.
 
-The first startup generates `.local/web-jobs/access-token` with mode `0600`.
-Read that file privately in your server terminal and enter its value in the
-website's **website access token** field. It is not a GitHub token or a model
-API key. The browser keeps it only in page memory, so refresh requires
-re-entering it. The server binds to `127.0.0.1` by default.
+The published console uses **public access**, explicitly requested by the
+project owner: no website token, login cookie, or browser credential storage.
+Opening or reloading the page automatically connects to the default server in
+`web_app/config.js`. Its URL and a manual retry button are in collapsed advanced
+settings. The server binds to `127.0.0.1` by default.
+
+Anyone able to reach the public endpoint can submit, inspect, export and cancel
+shared jobs. Uploads can consume model/GPU resources; do not submit confidential
+media or prompts. Existing size, queue and storage limits still apply. CORS is
+not access control against non-browser clients.
+
+Without `--public-access`, the API retains its private mode and generates
+`.local/web-jobs/access-token` with mode `0600`; such deployments need an
+authenticated API client. The current public frontend does not prompt for that
+token. Public mode does not require or create a website-token file, and does not
+delete an existing one. GitHub credentials and the ngrok authtoken are separate
+deployment secrets and remain private.
 
 Use one API process and one worker. For persistent deployment, run the command
 under a user systemd service with `WorkingDirectory` set to the repository,
@@ -42,13 +55,9 @@ after the final logout unless the administrator has enabled user lingering.
 
 ## Public ingress and frontend
 
-The current development configuration uses a Cloudflare Quick Tunnel. It is
-temporary: the hostname changes when its connector process restarts, and
-Cloudflare provides no uptime guarantee. For release, replace it with a
-named tunnel and a domain in your own Cloudflare account, or an administrator's
-HTTPS reverse proxy. See [Quick Tunnel limitations](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/do-more-with-tunnels/trycloudflare/).
-Traffic through this endpoint is forwarded by Cloudflare. The bearer token
-remains mandatory; knowing the URL alone does not grant access to jobs.
+The deployment uses the fixed, account-assigned ngrok endpoint configured in
+`web_app/config.js`. The former Cloudflare Quick Tunnel is stopped. ngrok
+forwards traffic to the local API; it does not host or run the evaluator.
 
 The development API uses `--max-upload-mib 90` to leave room below the proxy's
 upload ceiling. The console reads the actual limit from `/api/health`.
@@ -69,8 +78,8 @@ does not establish an HTTPS ingress.
 Set `web_app/config.js`'s public `apiBase` to the approved HTTPS URL, or enter it
 in the console. Never put credentials in this file. The default CORS origin is
 `https://xuanhaochang.github.io` (origins do not include `/AVagent-Eval/`).
-This allowlist permits requests from that origin; bearer authentication is
-still required and is the actual access control.
+The Origin allowlist limits browser integration, but does not make this public
+API private. Private API deployments additionally enforce bearer authentication.
 
 In the personal repository, choose **Settings → Pages → Source → GitHub
 Actions**. `.github/workflows/pages.yml` validates the web code and publishes
@@ -78,7 +87,9 @@ only `web_app/`, not backend files, uploads or experiment results.
 
 ## API and evidence semantics
 
-All `/api/*` requests require `Authorization: Bearer <website-access-token>`.
+In public mode `/api/*` requests require no Authorization header. In private
+mode they require `Authorization: Bearer <website-access-token>`.
+`GET /api/health` explicitly reports `access_mode` as `public` or `private`.
 
 | Endpoint | Purpose |
 | --- | --- |
@@ -93,18 +104,19 @@ All `/api/*` requests require `Authorization: Bearer <website-access-token>`.
 
 The console no longer polls the job API. After submitting or selecting an
 unfinished job, it opens `WSS /api/jobs/{id}/events`. Browser WebSockets cannot
-set an Authorization header, so the client sends
-`{"type":"authenticate","token":"<website-access-token>"}` as its first frame.
-The token is never placed in the URL, subprotocol, or browser storage. HTTP
-middleware does not authenticate WebSockets: this endpoint independently
-checks the Origin allowlist, authenticates within five seconds, and only then
-looks up the job. Missing or untrusted Origins and query strings are rejected.
+set an Authorization header. Public clients send `{"type":"subscribe"}` as
+their first frame with no secret. Private API clients instead send
+`{"type":"authenticate","token":"<website-access-token>"}`. The public server
+also accepts the old frame during a frontend rollout. HTTP middleware does not
+protect WebSockets: the endpoint independently checks the Origin allowlist and
+requires a valid initial frame within five seconds before looking up the job.
+Missing or untrusted Origins and query strings are rejected in both modes.
 
 After authentication, the server immediately sends the latest persisted job
 state, including a job that finished while disconnected. Worker state changes
 trigger events; there is no background HTTP poll or periodic job-state scan.
 Events contain only the job ID, status, and timestamps. The browser fetches the
-existing authenticated report endpoint once after a terminal event. Failed
+existing report endpoint once after a terminal event. Failed
 jobs remain failed, not a fabricated successful report.
 
 Heartbeats run every 25 seconds inside the same WebSocket. They are not new
@@ -149,7 +161,7 @@ ngrok start avagent-eval --config .local/ngrok/ngrok.yml
 For unattended operation use a dedicated systemd service with restart backoff,
 `UMask=0077`, and the API service as a dependency. Enable the service at boot and
 ask the administrator to enable user lingering or provide a system service.
-Do not stop a working ingress until the replacement's authenticated HTTPS and
+Do not stop a working ingress until the replacement's mode-appropriate HTTPS and
 WSS paths have both been verified. Then set `web_app/config.js` to the verified
 public URL with `deploymentMode: "fixed"` and deploy GitHub Pages. If serving
 the console directly from that URL, add its HTTPS origin to the API allowlist.
@@ -158,7 +170,7 @@ The browser adds `ngrok-skip-browser-warning: 1` only for supported ngrok
 hostnames; the API allows this header in CORS preflights. Without it, the Free
 plan can return its HTML interstitial rather than JSON, breaking cross-origin
 browser requests even when command-line health checks pass. This header does
-not replace or bypass the application's access token or Origin checks. A direct
+not change the application's configured access mode or Origin checks. A direct
 browser visit to the ngrok-hosted HTML may still show the provider's Visit Site
 page; the GitHub Pages frontend does not require that manual step.
 See [ngrok's supported header](https://ngrok.com/docs/pricing-limits/free-plan-limits#using-headers).
@@ -190,10 +202,10 @@ proof that the video has no defects. Confidence is not calibrated accuracy.
 No Precision/Recall/F1 is calculated without human ground truth.
 
 Uploads are capped at 128 MiB total, four reference images (10 MiB each),
-60 seconds of video and 4096 × 2160 video pixels. The initial deployment is a
-**private research workspace**, not an anonymous public GPU endpoint: everyone
-holding the shared token can see its jobs. Uploaded media may be sent to the
-configured model providers. Do not distribute this token publicly.
+60 seconds of video and 4096 × 2160 video pixels. The maintained deployment uses
+90 MiB total uploads and is a **public shared workspace**: visitors can see its
+jobs and reports. Uploaded media may be sent to configured model providers.
+There is no per-user task isolation or login session.
 
 Jobs, uploads and raw runner logs stay in the ignored `.local/web-jobs/`
 directory. No raw-log/file-serving endpoint exists. Finished jobs are retained;

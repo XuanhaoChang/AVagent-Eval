@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Start the private web API; the evaluator runs in its existing Python env."""
+"""Start the web API; the evaluator runs in its existing Python environment."""
 
 from __future__ import annotations
 
@@ -25,21 +25,27 @@ def main() -> int:
     parser.add_argument("--data-dir", type=Path, default=ROOT / ".local/web-jobs")
     parser.add_argument("--runner-python", type=Path, default=os.getenv("AVAGENT_WEB_RUNNER_PYTHON", sys.executable))
     parser.add_argument("--origin", action="append", default=["https://xuanhaochang.github.io"])
+    parser.add_argument("--public-access", action="store_true",
+                        help="Allow access without a website token, including shared job history and cancellation.")
     args = parser.parse_args()
     if not 1 <= args.max_upload_mib <= 128:
         parser.error("--max-upload-mib must be between 1 and 128")
     data = args.data_dir.resolve()
     data.mkdir(parents=True, exist_ok=True, mode=0o700)
     token_path = data / "access-token"
-    if not token_path.exists():
+    if not args.public_access and not token_path.exists():
         with open(token_path, "x", opener=lambda path, flags: os.open(path, flags, 0o600)) as stream:
             stream.write(secrets.token_urlsafe(32))
     settings = Settings(repo=args.repo.resolve(), data=data, python=args.runner_python.absolute(),
-                        token=token_path.read_text().strip(), origins=tuple(args.origin),
+                        token=token_path.read_text().strip() if token_path.exists() else "",
+                        origins=tuple(args.origin), public_access=args.public_access,
                         max_upload_bytes=args.max_upload_mib * 1024 * 1024)
     missing = settings.readiness()
     print(f"avagent-eval API: http://{args.host}:{args.port}", flush=True)
-    print(f"Private browser access token file: {token_path} (not the model API key)", flush=True)
+    if args.public_access:
+        print("PUBLIC ACCESS: no website token required; jobs, reports and cancellation are shared.", flush=True)
+    else:
+        print(f"Private API access token file: {token_path} (not the model API key)", flush=True)
     if missing:
         print("Evaluation disabled until configured: " + ", ".join(missing), flush=True)
     import uvicorn

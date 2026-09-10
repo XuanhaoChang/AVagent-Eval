@@ -2,11 +2,12 @@
 "use strict";
 
 window.AvagentJobEvents = class {
-  constructor({ base, token, jobId, onJob, onStatus }) {
+  constructor({ base, token = "", publicAccess = false, jobId, onJob, onStatus }) {
     const url = new URL(base + `/api/jobs/${encodeURIComponent(jobId)}/events`);
     url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
     this.url = url.href;
     this.token = token;
+    this.publicAccess = publicAccess;
     this.jobId = jobId;
     this.onJob = onJob;
     this.onStatus = onStatus;
@@ -37,7 +38,8 @@ window.AvagentJobEvents = class {
     };
     armWatchdog(15000);
     socket.onopen = () => {
-      if (current()) socket.send(JSON.stringify({ type: "authenticate", token: this.token }));
+      if (current()) socket.send(JSON.stringify(this.publicAccess ? { type: "subscribe" } :
+        { type: "authenticate", token: this.token }));
     };
     socket.onmessage = ({ data }) => {
       if (!current()) return;

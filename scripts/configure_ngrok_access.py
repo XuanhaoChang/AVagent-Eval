@@ -73,7 +73,7 @@ def main(argv=None) -> int:
     try:
         print("将为 avagent-eval 配置 ngrok 公网 HTTPS 入口。")
         print("127.0.0.1:8766 是服务器内部转发目标，不是你在自己电脑上打开的网址。")
-        print("仅公开这个网站，保留其已有访问令牌；不添加 ngrok 登录或限流策略。")
+        print("仅公开这个网站，保留它当前的访问模式；不添加 ngrok 登录或限流策略。")
         if input("确认此服务可以公开？输入 yes 继续: ").strip().lower() != "yes":
             print("已取消，未写入配置或启动隧道。")
             return 1

@@ -83,6 +83,61 @@ class WebAPITests(unittest.TestCase):
         return self.client.post("/api/jobs", headers=self.headers, data={"prompt": prompt},
                                 files={"video": ("video.mp4", self.video, "video/mp4")}, **kwargs)
 
+    def public_client(self, **overrides):
+        from fastapi.testclient import TestClient
+        from av_eval.web_api import create_app
+        settings = replace(self.settings, data=self.settings.data / "public", token="",
+                           public_access=True, **overrides)
+        return TestClient(create_app(settings))
+
+    def test_public_http_and_websocket_need_no_token(self):
+        with self.public_client() as client:
+            health = client.get("/api/health")
+            self.assertEqual(health.status_code, 200)
+            self.assertEqual(health.json()["access_mode"], "public")
+            self.assertNotIn("set-cookie", health.headers)
+            submitted = client.post("/api/jobs", data={"prompt": "public synthetic fixture"},
+                files={"video": ("video.mp4", self.video, "video/mp4")})
+            self.assertEqual(submitted.status_code, 202, submitted.text)
+            job_id = submitted.json()["id"]
+            with client.websocket_connect(f"/api/jobs/{job_id}/events", headers={"Origin": ORIGIN}) as ws:
+                ws.send_json({"type": "subscribe"})
+                for _ in range(8):
+                    event = ws.receive_json()
+                    if event.get("type") == "job" and event["job"]["status"] in {"completed", "failed"}:
+                        self.assertEqual(event["job"]["status"], "completed")
+                        break
+                else:
+                    self.fail("No terminal public event received")
+            self.assertEqual(client.get(f"/api/jobs/{job_id}/report.jsonl").status_code, 200)
+            self.assertEqual(len(client.get("/api/jobs").json()), 1)
+            self.assertEqual(client.get(f"/api/jobs/{job_id}/raw.log").status_code, 404)
+
+    def test_public_mode_preserves_origin_and_size_limits(self):
+        from starlette.websockets import WebSocketDisconnect
+        with self.public_client(max_upload_bytes=32) as client:
+            self.assertEqual(client.get("/api/health", headers={"Origin": "https://untrusted.example"}).status_code, 403)
+            self.assertEqual(client.post("/api/jobs", headers={"Content-Length": "33"}, content=b"invalid").status_code, 413)
+            with self.assertRaises(WebSocketDisconnect):
+                with client.websocket_connect("/api/jobs/unknown/events", headers={"Origin": "https://untrusted.example"}):
+                    pass
+
+    def test_public_cancellation_and_job_quota_need_no_token(self):
+        with self.public_client(max_saved_jobs=1) as client:
+            payload = {"data": {"prompt": "[WAIT]"}, "files": {"video": ("video.mp4", self.video, "video/mp4")}}
+            response = client.post("/api/jobs", **payload)
+            self.assertEqual(response.status_code, 202)
+            job_id = response.json()["id"]
+            self.assertEqual(client.post("/api/jobs", **payload).status_code, 429)
+            cancelled = client.post(f"/api/jobs/{job_id}/cancel")
+            self.assertEqual(cancelled.status_code, 200)
+            self.assertEqual(cancelled.json()["status"], "cancelled")
+
+    def test_private_mode_still_requires_a_strong_token(self):
+        from av_eval.web_api import create_app
+        with self.assertRaises(ValueError):
+            create_app(replace(self.settings, token="", public_access=False))
+
     def wait_for(self, job_id, expected):
         deadline = time.monotonic() + 8
         while time.monotonic() < deadline:
@@ -268,6 +323,12 @@ class WebAPITests(unittest.TestCase):
         with self.connect_events(job_id) as connection:
             connection.send_json({"type": "authenticate", "token": TOKEN})
             self.assertEqual(connection.receive_json()["job"]["status"], "running")
+            # Let the normal disconnect finish before TestClient cancels its task.
+            connection.close()
+            deadline = time.monotonic() + 2
+            while self.client.app.state.event_connections and time.monotonic() < deadline:
+                time.sleep(.01)
+            self.assertEqual(self.client.app.state.event_connections, 0)
         self.assertEqual(manager.get(job_id)["status"], "running")
         self.assertFalse(manager.listeners)
         with self.connect_events(job_id) as connection:

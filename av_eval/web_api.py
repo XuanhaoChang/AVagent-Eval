@@ -1,4 +1,4 @@
-"""Authenticated upload API for the GitHub Pages research console."""
+"""Upload API with explicit public/private modes for the research console."""
 
 from __future__ import annotations
 
@@ -23,7 +23,7 @@ def create_app(settings: Settings):
     # FastAPI resolves annotations using module globals, including factory-local types.
     globals()["Request"] = Request
     globals()["WebSocket"] = WebSocket
-    if len(settings.token) < 32:
+    if not settings.public_access and len(settings.token) < 32:
         raise ValueError("The private web access token must have at least 32 characters.")
 
     @asynccontextmanager
@@ -40,7 +40,8 @@ def create_app(settings: Settings):
     async def access_control(request: Request, call_next):
         if request.url.path.startswith("/api/") and request.method != "OPTIONS":
             expected = f"Bearer {settings.token}"
-            if not hmac.compare_digest(request.headers.get("authorization", "").encode(), expected.encode()):
+            if not settings.public_access and not hmac.compare_digest(
+                    request.headers.get("authorization", "").encode(), expected.encode()):
                 return JSONResponse({"detail": "请输入有效的网站访问令牌。"}, status_code=401)
             origin = request.headers.get("origin")
             if origin and origin not in settings.origins:
@@ -73,6 +74,7 @@ def create_app(settings: Settings):
         return {"service": "avagent-eval", "configured": not missing, "missing": missing,
                 "runtime_note": "Configuration check only; tool availability is reported by each evaluation.",
                 "notifications": "websocket",
+                "access_mode": "public" if settings.public_access else "private",
                 "limits": {"max_upload_bytes": settings.max_upload_bytes,
                            "max_duration_sec": settings.max_duration_sec, "max_references": 4}}
 
@@ -90,7 +92,7 @@ def create_app(settings: Settings):
     @app.websocket("/api/jobs/{job_id}/events")
     async def job_events(websocket: WebSocket, job_id: str):
         # HTTP middleware/CORS do not protect WebSockets. Check Origin explicitly.
-        # Authenticate the first frame, never a URL parameter or subprotocol.
+        # Public clients subscribe without a secret; private clients authenticate.
         if websocket.headers.get("origin") not in settings.origins or websocket.url.query:
             await websocket.close(code=4403)
             return
@@ -135,9 +137,12 @@ def create_app(settings: Settings):
                 await websocket.close(code=4401)
                 return
             auth = json.loads(raw)
-            if (not isinstance(auth, dict) or auth.get("type") != "authenticate"
-                    or not isinstance(auth.get("token"), str)
-                    or not hmac.compare_digest(auth["token"].encode(), settings.token.encode())):
+            public_subscription = (settings.public_access and isinstance(auth, dict)
+                                   and auth.get("type") in {"subscribe", "authenticate"})
+            private_subscription = (isinstance(auth, dict) and auth.get("type") == "authenticate"
+                    and isinstance(auth.get("token"), str)
+                    and hmac.compare_digest(auth["token"].encode(), settings.token.encode()))
+            if not (public_subscription or (not settings.public_access and private_subscription)):
                 await websocket.close(code=4401)
                 return
             snapshot = manager.subscribe(job_id, changed)

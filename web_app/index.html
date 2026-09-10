@@ -17,18 +17,17 @@
   <header class="topbar">
     <a class="brand" href="./"><span class="brand-mark" aria-hidden="true">ae</span>avagent<span>-eval</span></a>
     <span class="header-caption">Generated audio-video evaluation</span>
-    <div class="header-links"><span id="connection-status" class="status">未连接后端</span><a href="https://github.com/XuanhaoChang/AVagent-Eval" target="_blank" rel="noopener noreferrer">GitHub ↗</a></div>
+    <div class="header-links"><span id="connection-status" class="status">正在连接…</span><a href="https://github.com/XuanhaoChang/AVagent-Eval" target="_blank" rel="noopener noreferrer">GitHub ↗</a></div>
   </header>
   <main id="main">
     <div class="page-heading"><div><p class="eyebrow">RESEARCH WORKSPACE</p><h1>音视频缺陷评测</h1><p>从生成条件到问题定位，查看每一项检查的证据边界。</p></div><span class="mode-label">单样本评测 <span>/</span> Text · Ref · AV</span></div>
-    <details class="connection" id="connection-panel" open>
-      <summary>服务器连接 <span id="connection-summary">连接后可提交真实评测任务</span></summary>
+    <details class="connection" id="connection-panel">
+      <summary>服务器状态与高级设置 <span id="connection-summary">自动连接默认服务器</span></summary>
       <form id="connection-form" class="connection-form">
         <label>后端地址<input id="api-base" type="url" placeholder="https://your-backend.example" required spellcheck="false" autocomplete="off"></label>
-        <label>网站访问令牌<input id="access-token" type="password" placeholder="由服务器管理员提供" required autocomplete="off" spellcheck="false"><small>不是模型 API key；仅在当前页面内存中使用。</small></label>
-        <button type="submit" id="connect">连接服务器</button>
+        <button type="submit" id="connect">重新连接</button>
       </form>
-      <p class="hint">请仅连接你信任的服务器。上传媒体将保存在该服务器，并可能发送给其配置的模型服务；持有同一访问令牌的协作者可查看任务报告。</p>
+      <p class="hint">当前为公开共享工作区，无需登录。请勿上传敏感媒体；任务记录和报告对访问者可见。上传媒体会保存在服务器，并可能发送给其配置的模型服务。</p>
       <p id="ingress-note" class="hint" hidden></p>
     </details>
     <p id="notice" class="notice" role="status" aria-live="polite" hidden></p>

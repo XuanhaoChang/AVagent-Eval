@@ -3,7 +3,7 @@ import fs from "node:fs";
 import vm from "node:vm";
 import { test } from "node:test";
 
-function setup() {
+function setup(options = {}) {
   let serial = 0;
   const timers = new Map(), sockets = [], jobs = [], statuses = [];
   class Socket {
@@ -17,7 +17,7 @@ function setup() {
     setTimeout: (callback, delay) => { timers.set(++serial, { callback, delay }); return serial; },
     clearTimeout: (id) => timers.delete(id) };
   vm.runInNewContext(fs.readFileSync(new URL("../web_app/job-events.js", import.meta.url), "utf8"), context);
-  const events = new context.window.AvagentJobEvents({ base: "https://api.example", token: "private-test-value",
+  const events = new context.window.AvagentJobEvents({ base: "https://api.example", token: "private-test-value", ...options,
     jobId: "a".repeat(32), onJob: (job) => jobs.push(job), onStatus: (status) => statuses.push(status) });
   function tick(delay) {
     const item = [...timers].find(([, timer]) => timer.delay === delay);
@@ -42,6 +42,18 @@ test("auth frame only, one connection for updates and heartbeat, finish closes",
   assert.equal(s.sockets.length, 1);
   assert.equal(s.timers.size, 0);
   assert.equal(s.events.token, "");
+});
+
+test("public subscription sends no credential and receives updates", () => {
+  const s = setup({ publicAccess: true, token: "" }), ws = s.sockets[0];
+  ws.open();
+  assert.deepEqual(ws.sent[0], { type: "subscribe" });
+  ws.message(s.job("running"));
+  ws.message({ type: "heartbeat" });
+  assert.deepEqual(ws.sent[1], { type: "pong" });
+  ws.message(s.job("completed"));
+  assert.equal(s.events.stopped, true);
+  assert.equal(s.timers.size, 0);
 });
 
 test("bounded backoff does not start HTTP polling or reconnect forever", () => {

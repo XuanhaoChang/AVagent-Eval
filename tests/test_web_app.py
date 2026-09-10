@@ -41,12 +41,17 @@ class WebAppTests(unittest.TestCase):
             self.assertFalse(path.startswith(("/", "http:")))
             self.assertTrue((ROOT / "web_app" / path).is_file(), path)
 
-    def test_uses_real_jobs_and_no_persistent_browser_tokens(self):
+    def test_uses_real_jobs_without_browser_credentials(self):
         self.assertIn('api("/api/jobs", { method: "POST", body: form })', self.script)
         self.assertIn("not_evaluable", self.script)
         self.assertNotIn("localStorage", self.script)
         self.assertNotIn("sessionStorage", self.script)
         self.assertNotIn("innerHTML", self.script)
+        self.assertNotIn('id="access-token"', self.page)
+        self.assertNotIn("Authorization:", self.script)
+        self.assertIn('if ($("api-base").value) connectBackend();', self.script)
+        self.assertIn('publicAccess: true', self.script)
+        self.assertNotIn('id="connection-panel" open', self.page)
 
     def test_personal_repository_and_explicit_public_configuration(self):
         self.assertIn("https://github.com/XuanhaoChang/AVagent-Eval", self.page)
@@ -74,7 +79,7 @@ class WebAppTests(unittest.TestCase):
     def test_ngrok_api_requests_skip_html_interstitial_without_dropping_auth(self):
         self.assertIn('"ngrok-skip-browser-warning": "1"', self.script)
         self.assertIn('...(ngrok ?', self.script)
-        self.assertIn('Authorization: `Bearer ${snapshot.token}`', self.script)
+        self.assertNotIn('Authorization:', self.script)
         self.assertIn('credentials: "omit"', self.script)
 
 
