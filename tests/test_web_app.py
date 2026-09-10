@@ -3,6 +3,7 @@ from html.parser import HTMLParser
 from pathlib import Path
 import re
 import unittest
+from urllib.parse import urlsplit
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -39,7 +40,7 @@ class WebAppTests(unittest.TestCase):
     def test_assets_resolve_below_github_project_path(self):
         for path in self.parser.assets:
             self.assertFalse(path.startswith(("/", "http:")))
-            self.assertTrue((ROOT / "web_app" / path).is_file(), path)
+            self.assertTrue((ROOT / "web_app" / urlsplit(path).path).is_file(), path)
 
     def test_uses_real_jobs_without_browser_credentials(self):
         self.assertIn('api("/api/jobs", { method: "POST", body: form })', self.script)
@@ -49,9 +50,14 @@ class WebAppTests(unittest.TestCase):
         self.assertNotIn("innerHTML", self.script)
         self.assertNotIn('id="access-token"', self.page)
         self.assertNotIn("Authorization:", self.script)
-        self.assertIn('if ($("api-base").value) connectBackend();', self.script)
+        self.assertIn('if (defaultBase) connectBackend();', self.script)
         self.assertIn('publicAccess: true', self.script)
-        self.assertNotIn('id="connection-panel" open', self.page)
+        for removed in ("connection-panel", "connection-summary", "connection-form", "api-base"):
+            self.assertNotIn(f'id="{removed}"', self.page)
+            self.assertNotIn(f'$("{removed}")', self.script)
+        self.assertNotIn("服务器状态与高级设置", self.page)
+        self.assertNotIn("ngrok-free.dev", self.page)
+        self.assertIn('id="retry-connection"', self.page)
 
     def test_personal_repository_and_explicit_public_configuration(self):
         self.assertIn("https://github.com/XuanhaoChang/AVagent-Eval", self.page)

@@ -17,7 +17,7 @@ const decisionLabels = { detected: "检测到问题", not_detected: "未检测�
 const terminal = new Set(["completed", "failed", "cancelled"]);
 const configuredBase = window.AVAGENT_CONFIG?.apiBase || "";
 const localHost = ["localhost", "127.0.0.1", "[::1]"].includes(location.hostname);
-$("api-base").value = configuredBase || (localHost && location.protocol !== "file:" ? location.origin : "");
+const defaultBase = configuredBase || (localHost && location.protocol !== "file:" ? location.origin : "");
 
 function node(tag, text, className) {
   const element = document.createElement(tag);
@@ -82,14 +82,15 @@ async function connectBackend() {
   const generation = ++state.generation;
   state.connected = false;
   state.ready = false;
-  $("connect").disabled = true;
+  $("retry-connection").disabled = true;
+  $("retry-connection").hidden = true;
   $("cancel").hidden = true;
   $("download").disabled = true;
   status("connection-status", "正在连接…", "busy");
   setControls();
   notify();
   try {
-    state.base = safeBase($("api-base").value.trim());
+    state.base = safeBase(defaultBase);
     const snapshot = { base: state.base };
     const health = await (await api("/api/health", {}, snapshot)).json();
     if (generation !== state.generation) return;
@@ -101,8 +102,7 @@ async function connectBackend() {
       $("upload-limit").textContent = Math.floor(state.maxUploadBytes / 1048576);
     }
     status("connection-status", state.ready ? "后端已连接" : "后端待配置", state.ready ? "good" : "busy");
-    $("connection-summary").textContent = state.ready ? new URL(state.base).host : "已连接，评测配置未完成";
-    $("connection-panel").open = !state.ready;
+    $("retry-connection").hidden = state.ready;
     if (!state.ready) notify(`服务器仍缺少配置：${health.missing.join("、")}。请管理员配置后重新连接。`);
     state.job = null;
     renderJob(null);
@@ -114,14 +114,11 @@ async function connectBackend() {
   } catch (error) {
     if (generation !== state.generation) return;
     status("connection-status", "连接失败", "bad");
-    $("connection-panel").open = true;
+    $("retry-connection").hidden = false;
     notify(error.message);
-  } finally { if (generation === state.generation) { $("connect").disabled = false; setControls(); } }
+  } finally { if (generation === state.generation) { $("retry-connection").disabled = false; setControls(); } }
 }
-$("connection-form").addEventListener("submit", (event) => {
-  event.preventDefault();
-  connectBackend();
-});
+$("retry-connection").addEventListener("click", connectBackend);
 
 $("video-input").addEventListener("change", () => {
   if (state.videoURL) URL.revokeObjectURL(state.videoURL);
@@ -163,7 +160,7 @@ $("evaluation-form").addEventListener("submit", async (event) => {
   form.append("prompt", $("prompt").value.trim()); form.append("video", video);
   refs.forEach((file) => form.append("references", file));
   state.submitting = true;
-  $("connect").disabled = true;
+  $("retry-connection").disabled = true;
   setControls(); notify();
   try {
     const job = await (await api("/api/jobs", { method: "POST", body: form })).json();
@@ -173,7 +170,7 @@ $("evaluation-form").addEventListener("submit", async (event) => {
     beginEvents(job.id);
     await refreshHistory();
   } catch (error) { notify(error.message); }
-  finally { state.submitting = false; $("connect").disabled = false; setControls(); }
+  finally { state.submitting = false; $("retry-connection").disabled = false; setControls(); }
 });
 
 function renderJob(job) {
@@ -356,10 +353,9 @@ $("download").addEventListener("click", async () => {
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   } catch (error) { notify(error.message); }
 });
-if (!$("api-base").value) $("connection-summary").textContent = "尚未配置公网后端地址";
-if (window.AVAGENT_CONFIG?.deploymentMode === "temporary") {
-  $("ingress-note").hidden = false;
-  $("ingress-note").textContent = "当前通过 Cloudflare 临时 HTTPS 隧道连接服务器，仅供联调。隧道重启后地址可能变化，正式部署需固定域名入口。";
-}
 setControls();
-if ($("api-base").value) connectBackend();
+if (defaultBase) connectBackend();
+else {
+  status("connection-status", "服务未配置", "bad");
+  notify("默认服务器尚未配置，请联系维护者。");
+}

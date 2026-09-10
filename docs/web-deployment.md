@@ -32,8 +32,10 @@ internal AVAgent branch settings, not alternative evaluators.
 The published console uses **public access**, explicitly requested by the
 project owner: no website token, login cookie, or browser credential storage.
 Opening or reloading the page automatically connects to the default server in
-`web_app/config.js`. Its URL and a manual retry button are in collapsed advanced
-settings. The server binds to `127.0.0.1` by default.
+`web_app/config.js`. No server settings panel or backend hostname is shown in
+the page; a retry button appears only if connection/readiness fails. Change
+deployment configuration in `config.js`, not in a visitor-facing input field.
+The server binds to `127.0.0.1` by default.
 
 Anyone able to reach the public endpoint can submit, inspect, export and cancel
 shared jobs. Uploads can consume model/GPU resources; do not submit confidential
@@ -75,8 +77,8 @@ an HTTPS Pages site. Do not change an administrator-managed SSH proxy or bypass
 a disabled SSH forwarding policy. An outbound address or an SSH port mapping
 does not establish an HTTPS ingress.
 
-Set `web_app/config.js`'s public `apiBase` to the approved HTTPS URL, or enter it
-in the console. Never put credentials in this file. The default CORS origin is
+Set `web_app/config.js`'s public `apiBase` to the approved HTTPS URL.
+Never put credentials in this file. The default CORS origin is
 `https://xuanhaochang.github.io` (origins do not include `/AVagent-Eval/`).
 The Origin allowlist limits browser integration, but does not make this public
 API private. Private API deployments additionally enforce bearer authentication.
