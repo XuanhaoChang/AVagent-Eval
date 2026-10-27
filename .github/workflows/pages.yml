@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - 'web_app/**'
+      - 'paper_site/**'
       - 'av_eval/web_*.py'
       - 'tests/test_web_*.py'
       - 'tests/test_web_events.mjs'
@@ -45,9 +46,18 @@ jobs:
       - run: node --test tests/test_web_render.mjs
       - run: python -m unittest discover -s tests -p 'test_configure_ngrok_access.py' -v
       - run: python -m unittest discover -s tests -p 'test_configure_github_access.py' -v
+      - name: Assemble paper site and existing evaluation app
+        run: |
+          mkdir -p _site/eval _site/assets
+          cp -a web_app/. _site/eval/
+          cp -a paper_site/. _site/
+          curl --fail --location --retry 3 --max-time 300 \
+            https://huggingface.co/datasets/XuanhaoChang/DefectLens-Demo/resolve/5708bd9d1500b616fba0cae28017e63c7cc7d403/defectlens-demo-v2.mp4 \
+            --output _site/assets/defectlens-demo-v2.mp4
+          printf '%s  %s\n' '3964d3dbabfac798f9266d26961b989ab5f9d53ebe37f38066f0e0e13f6e48e4' '_site/assets/defectlens-demo-v2.mp4' | sha256sum -c -
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: web_app
+          path: _site
   deploy:
     needs: validate
     runs-on: ubuntu-latest

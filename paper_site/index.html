@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="DefectLens detects and localizes errors in generated audio-video using evidence grounded in the generation request.">
+  <meta name="theme-color" content="#f8f7f4">
+  <meta property="og:title" content="DefectLens: Detecting and Localizing Errors in Generated Audio-Video">
+  <meta property="og:description" content="A tool-augmented agent for inspectable, requirement-conditioned audio-video evaluation.">
+  <meta property="og:type" content="website">
+  <title>DefectLens · Detecting and Localizing Errors in Generated Audio-Video</title>
+  <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="styles.css">
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+  <header class="topbar">
+    <a class="brand" href="./" aria-label="DefectLens home"><span class="brand-icon" aria-hidden="true"></span>DefectLens</a>
+    <nav class="nav" aria-label="Main navigation"><a href="#overview">Overview</a><a href="#demo">Video</a><a href="#approach">Approach</a><a href="#results">Results</a></nav>
+    <a class="nav-action" href="./eval/">Evaluation app <span aria-hidden="true">↗</span></a>
+  </header>
+  <main id="main">
+    <section class="hero wrap" id="overview">
+      <div class="hero-copy">
+        <p class="eyebrow"><span class="dot"></span> RESEARCH PROJECT <span class="eyebrow-rule"></span> AUDIO + VIDEO</p>
+        <h1>Defect<span>Lens</span><span class="period">.</span></h1>
+        <p class="hero-title">Detecting and Localizing Errors in Generated Audio-Video</p>
+        <p class="hero-description">Generated videos can look convincing while missing what was asked. DefectLens finds individual errors and connects them to the evidence needed to inspect them.</p>
+        <div class="hero-actions"><a class="button primary" href="#demo">Watch the video <span aria-hidden="true">↘</span></a><a class="button secondary" href="https://github.com/XuanhaoChang/AVagent-Eval">Code <span aria-hidden="true">↗</span></a><a class="button secondary" href="https://huggingface.co/datasets/XuanhaoChang/DefectLens-H3">Dataset <span aria-hidden="true">↗</span></a></div>
+        <p class="availability">For hands-on evaluation, <a href="./eval/">open the evaluation app</a></p>
+      </div>
+      <div class="trace" aria-label="Example of a saved temporal finding">
+        <div class="trace-head"><span><span class="live-dot"></span> EVIDENCE TRACE</span><span>CASE / 01</span></div>
+        <div class="trace-body"><p class="trace-kicker">A requirement, an observation, a location.</p><h2>What happened<br>to the replay?</h2>
+          <div class="trace-pair"><div><span>REQUEST</span><p>Replay the footage of the dog just captured in the park.</p></div><div><span>OBSERVATION</span><p>The replay shows a mountain landscape.</p></div></div>
+          <div class="trace-line"><span>00:00</span><div class="trace-bar"><i></i><b></b></div><span>00:15</span></div>
+          <div class="trace-result"><div><span>RECORDED ISSUE</span><strong>Scene mismatch</strong></div><div><span>INTERVAL</span><strong>11.0–11.5 s</strong></div><span class="trace-mark" aria-hidden="true">↗</span></div>
+        </div><div class="trace-foot"><span>ORIGINAL VIDEO → SAVED FINDING</span><span>01 / 03</span></div>
+      </div>
+    </section>
+
+    <section class="video-section wrap" id="demo" aria-labelledby="demo-title">
+      <div class="section-top"><div><p class="eyebrow">01 / PROJECT VIDEO</p><h2 id="demo-title">See the evidence in context<span class="period">.</span></h2></div><p>Two minutes from a request<br>to an inspectable finding.</p></div>
+      <div class="video-frame"><video id="demo-player" controls playsinline preload="metadata" poster="assets/video-cover.svg"><source src="assets/defectlens-demo-v2.mp4" type="video/mp4">Your browser cannot play this video. <a href="assets/defectlens-demo-v2.mp4">Download the MP4.</a></video></div>
+      <div class="video-bottom"><div><strong>DefectLens: Project Overview</strong><span>2:08 · English narration and captions</span></div><a href="assets/defectlens-demo-v2.mp4" download>Download video <span aria-hidden="true">↗</span></a></div>
+      <div class="chapter-row" aria-label="Video chapters"><span>JUMP TO</span><button data-seek="24">Method <i>00:24</i></button><button data-seek="44">Temporal case <i>00:44</i></button><button data-seek="68">Text case <i>01:08</i></button><button data-seek="85">Speech case <i>01:25</i></button><button data-seek="104">Results <i>01:44</i></button></div>
+    </section>
+
+    <section class="abstract-section" aria-labelledby="abstract-title"><div class="wrap abstract-grid"><div><p class="eyebrow">02 / THE PROBLEM</p><h2 id="abstract-title">One video.<br>Many ways to<br><em>fall short.</em></h2></div><div class="abstract-copy"><p class="lead">A generated clip is more than a sequence of frames. It has a request, visible subjects, spoken words, on-screen text, and timing.</p><p>DefectLens is a tool-augmented agent that retrieves atomic defect events and localizes them for inspection. It combines broad visual proposals with speech, text, speaker, metadata, and synchronization observations. Modality-specific verification grounds candidate claims, while consolidation preserves independent findings and their locations.</p><p>Shared observations can support multiple checking dimensions, directing additional inspection toward specific claims.</p><a class="text-link" href="#approach">Explore the approach <span aria-hidden="true">→</span></a></div></div></section>
+
+    <section class="approach-section wrap" id="approach" aria-labelledby="approach-title"><div class="section-top"><div><p class="eyebrow">03 / APPROACH</p><h2 id="approach-title">From request to report<span class="period">.</span></h2></div><p>Follow the evidence<br>through four steps.</p></div>
+      <div class="steps"><article><span class="step-number">01</span><div class="step-rule"></div><h3>Propose</h3><p>Inspect the request, references, and timestamped frames for candidate discrepancies.</p></article><article><span class="step-number">02</span><div class="step-rule"></div><h3>Gather</h3><p>Build reusable observations from frames, crops, speech, text, motion, and media properties.</p></article><article><span class="step-number">03</span><div class="step-rule"></div><h3>Verify</h3><p>Check each claim against the observations relevant to its modality and requirement.</p></article><article><span class="step-number">04</span><div class="step-rule"></div><h3>Localize</h3><p>Preserve independent findings with their available intervals, keyframes, and bounding boxes.</p></article></div>
+      <div class="evidence-note"><span class="note-icon" aria-hidden="true">✳</span><p><strong>Evidence travels with the finding.</strong> A visual issue may include a keyframe and box; an audio issue may be localized to a time interval.</p></div>
+    </section>
+
+    <section class="results-section" id="results" aria-labelledby="results-title"><div class="wrap"><div class="section-top"><div><p class="eyebrow">04 / RESULTS</p><h2 id="results-title">Measured for inspection<span class="period">.</span></h2></div><p>Detection and localization<br>on the same benchmark.</p></div>
+      <div class="results-layout"><div class="result-intro"><span class="result-label">HUMAN-ANNOTATED BENCHMARK</span><div class="result-count">189<span> clips</span></div><p>670 reference issues across generated audio-video clips. The comparison shown uses the same 189 clips for both methods.</p></div><div class="metric"><span class="result-label">EVENT F1 ↑</span><strong>0.679</strong><div class="metric-bar"><i style="--value:67.9%"></i></div><p>GPT-5.5 <b>0.597</b></p><small>+8.1 percentage points</small></div><div class="metric"><span class="result-label">JOINT LOCALIZATION RECALL ↑</span><strong>0.510</strong><div class="metric-bar"><i style="--value:51%"></i></div><p>GPT-5.5 <b>0.376</b></p><small>+13.5 percentage points</small></div></div>
+      <p class="results-footnote">Joint localization recall evaluates issue recovery together with eligible temporal and spatial localization. Values follow the current manuscript.</p></div></section>
+
+    <section class="closing wrap"><div><p class="eyebrow">CONTINUE EXPLORING</p><h2>Look closer<span class="period">.</span></h2><p>Explore the code, the public dataset, or the evaluation interface.</p></div><div class="closing-links"><a href="https://github.com/XuanhaoChang/AVagent-Eval"><span>01</span> Code <b>↗</b></a><a href="https://huggingface.co/datasets/XuanhaoChang/DefectLens-H3"><span>02</span> DefectLens-H3 dataset <b>↗</b></a><a href="./eval/"><span>03</span> Evaluation app <b>↗</b></a></div></section>
+  </main>
+  <footer class="footer wrap"><a class="brand" href="./"><span class="brand-icon" aria-hidden="true"></span>DefectLens</a><span>Detecting and Localizing Errors in Generated Audio-Video</span><a href="#overview">Back to top ↑</a></footer>
+</body>
+</html>
