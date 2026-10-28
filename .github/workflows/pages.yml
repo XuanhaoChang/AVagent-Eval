@@ -52,9 +52,9 @@ jobs:
           cp -a web_app/. _site/eval/
           cp -a paper_site/. _site/
           curl --fail --location --retry 3 --max-time 300 \
-            https://huggingface.co/datasets/XuanhaoChang/DefectLens-Demo/resolve/9b2317b755e51afae29584aa9f4ecdbaf2f804db/defectlens-demo-v2.mp4 \
+            https://huggingface.co/datasets/XuanhaoChang/DefectLens-Demo/resolve/8ac574bae3681c30206594b3b2212db81993a919/defectlens-demo-v2.mp4 \
             --output _site/assets/defectlens-demo-v2.mp4
-          printf '%s  %s\n' '6ff070d79732b84b5568d3e10d5fdd1b2eaca8def447f33ff41c6e2a5e4e0c57' '_site/assets/defectlens-demo-v2.mp4' | sha256sum -c -
+          printf '%s  %s\n' '7ea0048b25c1cf4cef9075b0be2e6eae412b5e81f24d13643b5734c324b14ee0' '_site/assets/defectlens-demo-v2.mp4' | sha256sum -c -
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site
