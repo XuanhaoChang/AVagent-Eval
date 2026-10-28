@@ -52,9 +52,13 @@ jobs:
           cp -a web_app/. _site/eval/
           cp -a paper_site/. _site/
           curl --fail --location --retry 3 --max-time 300 \
-            https://huggingface.co/datasets/XuanhaoChang/DefectLens-Demo/resolve/8ac574bae3681c30206594b3b2212db81993a919/defectlens-demo-v2.mp4 \
-            --output _site/assets/defectlens-demo-v2.mp4
-          printf '%s  %s\n' '7ea0048b25c1cf4cef9075b0be2e6eae412b5e81f24d13643b5734c324b14ee0' '_site/assets/defectlens-demo-v2.mp4' | sha256sum -c -
+            https://huggingface.co/datasets/XuanhaoChang/DefectLens-Demo/resolve/04350b4b17ff3bbafdb3bf6c13b33d3fbf8956ed/defectlens-demo-v3.mp4 \
+            --output _site/assets/defectlens-demo-v3.mp4
+          printf '%s  %s\n' '81b61ae50f1ef12ef8e9056cb63035282adeaa7cb3e3c36563a358ccdb2ebcfa' '_site/assets/defectlens-demo-v3.mp4' | sha256sum -c -
+          curl --fail --location --retry 3 --max-time 120 \
+            https://huggingface.co/datasets/XuanhaoChang/DefectLens-Demo/resolve/04350b4b17ff3bbafdb3bf6c13b33d3fbf8956ed/defectlens-demo-v3-poster.jpg \
+            --output _site/assets/defectlens-demo-v3-poster.jpg
+          printf '%s  %s\n' '380c594cef081ff0ff0f126042bdc46acaf3324bc41ddf45a44dc2ba34500cd9' '_site/assets/defectlens-demo-v3-poster.jpg' | sha256sum -c -
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site
